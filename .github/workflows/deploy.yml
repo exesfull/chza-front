@@ -31,8 +31,12 @@ jobs:
       - name: Build Vite project
         run: npm run build
 
-      # 4. Деплой через SSH с очисткой папки
-      - name: Deploy to server via SSH
+      # 4. Подготовка index.html для отдельного деплоя в корень /chza/
+      - name: Prepare index.html for deploy
+        run: mkdir -p deploy-root && cp dist/index.html deploy-root/
+
+      # 5. Деплой статики (assets, vite.svg и т.д.) в /chza/web/
+      - name: Deploy static assets to /chza/web/
         uses: easingthemes/ssh-deploy@v5.1.0
         env:
           SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
@@ -41,12 +45,16 @@ jobs:
           REMOTE_PORT: '22'
           SOURCE: 'dist/'
           TARGET: '/var/www/exesfull.com/chza/web/'
-          # Очистка папки перед деплоем + строгие флаги rsync
-          ARGS: '-rlgoDzvc -i --delete-before'
-          SCRIPT_BEFORE: |
-            echo "🧹 Очищаем целевую папку..."
-            rm -rf /var/www/exesfull.com/chza/web/*
-            mkdir -p /var/www/exesfull.com/chza/web/
-          SCRIPT_AFTER: |
-            echo "✅ Деплой завершён. Проверка файлов:"
-            ls -la /var/www/exesfull.com/chza/web/
+          ARGS: '-rlgoDzvc -i --exclude=index.html --delete-before'
+
+      # 6. Деплой только index.html в корень /chza/
+      - name: Deploy index.html to /chza/
+        uses: easingthemes/ssh-deploy@v5.1.0
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          REMOTE_HOST: ${{ secrets.SSH_HOST }}
+          REMOTE_USER: ${{ secrets.SSH_USER }}
+          REMOTE_PORT: '22'
+          SOURCE: 'deploy-root/'
+          TARGET: '/var/www/exesfull.com/chza/'
+          ARGS: '-rlgoDzvc -i'

@@ -1,7 +1,7 @@
 "use client"
 
 import { ChevronRight, type LucideIcon } from "lucide-react"
-import { Link } from "react-router-dom"
+import { Link, useLocation } from "react-router-dom"
 
 import {
   Collapsible,
@@ -17,6 +17,7 @@ import {
   SidebarMenuSubButton,
   SidebarMenuSubItem,
 } from "@/components/ui/sidebar"
+import { cn } from "@/lib/utils"
 
 export function NavMain({
   items,
@@ -32,11 +33,15 @@ export function NavMain({
     }[]
   }[]
 }) {
+  const location = useLocation()
+
   return (
     <SidebarGroup>
       <SidebarMenu>
         {items.map((item) =>
-          item.items && item.items.length > 0 ? (
+          item.title === "separator" ? (
+            <div key="separator" className="my-2 border-t border-sidebar-border" />
+          ) : item.items && item.items.length > 0 ? (
             <Collapsible
               key={item.title}
               asChild
@@ -45,7 +50,10 @@ export function NavMain({
             >
               <SidebarMenuItem>
                 <CollapsibleTrigger asChild>
-                  <SidebarMenuButton tooltip={item.title}>
+                  <SidebarMenuButton
+                    tooltip={item.title}
+                    isActive={item.items?.some((sub) => sub.url === location.pathname)}
+                  >
                     {item.icon && <item.icon />}
                     <span>{item.title}</span>
                     <ChevronRight className="ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
@@ -55,7 +63,7 @@ export function NavMain({
                   <SidebarMenuSub>
                     {item.items?.map((subItem) => (
                       <SidebarMenuSubItem key={subItem.title}>
-                        <SidebarMenuSubButton asChild>
+                        <SidebarMenuSubButton asChild isActive={location.pathname === subItem.url}>
                           <Link to={subItem.url}>
                             <span>{subItem.title}</span>
                           </Link>
@@ -68,7 +76,7 @@ export function NavMain({
             </Collapsible>
           ) : (
             <SidebarMenuItem key={item.title}>
-              <SidebarMenuButton tooltip={item.title} asChild>
+              <SidebarMenuButton asChild isActive={location.pathname === item.url}>
                 <Link to={item.url}>
                   {item.icon && <item.icon />}
                   <span>{item.title}</span>

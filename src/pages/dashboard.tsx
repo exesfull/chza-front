@@ -1,7 +1,6 @@
 import { Card, CardHeader, CardDescription, CardTitle, CardAction, CardFooter } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-import { TrendingUp, TrendingDown, Users, DollarSign } from "lucide-react"
+import { TrendingUp, TrendingDown } from "lucide-react"
 
 export function DashboardPage() {
   return (

@@ -6,9 +6,6 @@ import {
   ListTodo,
   Link2,
   CalendarDays,
-  Users,
-  Settings,
-  HelpCircle,
   Shield,
 } from "lucide-react"
 
@@ -71,18 +68,18 @@ const navMainBase = [
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const { isAdmin } = useTeams()
 
-  const navMain = navMainBase.filter((item, idx) => {
-    if (item.adminOnly && !isAdmin) return false
-    // Hide separator if next item (admin-only) is hidden
-    if (item.title === "separator") {
-      const nextItem = navMainBase[idx + 1]
-      if (nextItem?.adminOnly && !isAdmin) return false
-      // Also hide if previous was separator
-      const prevItem = navMainBase[idx - 1]
-      if (prevItem?.title === "separator") return false
-    }
-    return true
-  })
+  const navMain = navMainBase
+    .filter((item, idx) => {
+      if (item.adminOnly && !isAdmin) return false
+      if (item.title === "separator") {
+        const nextItem = navMainBase[idx + 1]
+        if (nextItem?.adminOnly && !isAdmin) return false
+        const prevItem = navMainBase[idx - 1]
+        if (prevItem?.title === "separator") return false
+      }
+      return true
+    })
+    .map(({ adminOnly, ...rest }) => rest)
 
   return (
     <Sidebar collapsible="icon" {...props}>

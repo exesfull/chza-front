@@ -1,7 +1,7 @@
 "use client"
 
 import { ChevronRight, type LucideIcon } from "lucide-react"
-import { Link, useLocation, useParams, useNavigate } from "react-router-dom"
+import { Link, useLocation, useParams } from "react-router-dom"
 
 import {
   Collapsible,
@@ -17,7 +17,6 @@ import {
   SidebarMenuSubButton,
   SidebarMenuSubItem,
 } from "@/components/ui/sidebar"
-import { cn } from "@/lib/utils"
 
 import { useTeams } from "@/hooks/use-teams"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -39,7 +38,6 @@ export function NavMain({
 }) {
   const location = useLocation()
   const { teamId } = useParams()
-  const navigate = useNavigate()
   const { teamMembership } = useTeams()
 
   // Show skeleton while membership (admin status) is loading

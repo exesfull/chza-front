@@ -2,7 +2,6 @@
 
 import {
   ArrowLeftRight,
-  Bell,
   ChevronsUpDown,
   LogOut,
   Settings,

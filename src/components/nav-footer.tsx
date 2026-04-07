@@ -9,7 +9,6 @@ import {
 } from "@/components/ui/sidebar"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useTeams } from "@/hooks/use-teams"
-import { cn } from "@/lib/utils"
 
 const footerItems = [
   {

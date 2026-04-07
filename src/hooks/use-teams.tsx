@@ -21,7 +21,7 @@ export interface TeamMembership {
   }
 }
 
-type SortBy = "name_asc" | "name_desc" | "date_asc" | "date_desc"
+export type SortBy = "name_asc" | "name_desc" | "date_asc" | "date_desc"
 
 interface TeamsContextType {
   teams: TeamInfo[]

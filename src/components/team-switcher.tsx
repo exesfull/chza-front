@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { useNavigate, useLocation } from "react-router-dom"
+import { useNavigate } from "react-router-dom"
 import { ChevronsUpDown, Plus, ArrowUpDown, ArrowUpAZ, ArrowUpZA, CalendarArrowDown, CalendarArrowUp } from "lucide-react"
 
 import {
@@ -17,14 +17,13 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar"
-import { useTeams, sortTeams, type SortBy, formatJoinedDate } from "@/hooks/use-teams"
+import { useTeams, sortTeams, type SortBy } from "@/hooks/use-teams"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 
 export function TeamSwitcher() {
   const { isMobile, state } = useSidebar()
   const { teams, loading, activeTeam, setActiveTeam, teamMembership } = useTeams()
   const navigate = useNavigate()
-  const location = useLocation()
   const [sortBy, setSortBy] = useState<SortBy>("name_asc")
   const [sortOpen, setSortOpen] = useState(false)
 

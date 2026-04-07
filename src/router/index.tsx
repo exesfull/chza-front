@@ -1,5 +1,4 @@
 import { createBrowserRouter, RouterProvider } from 'react-router-dom'
-import { DashboardLayout } from '@/components/layouts/dashboard-layout'
 import { TeamLayout } from '@/components/layouts/team-layout'
 import { LandingPage } from '@/pages/landing'
 import { TeamsPage } from '@/pages/teams-select'

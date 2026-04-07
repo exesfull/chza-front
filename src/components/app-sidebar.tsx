@@ -22,7 +22,19 @@ import {
   SidebarRail,
 } from "@/components/ui/sidebar"
 
-const navMainBase = [
+interface NavItem {
+  title: string
+  url: string
+  icon?: LucideIcon
+  isActive?: boolean
+  adminOnly?: boolean
+  items?: {
+    title: string
+    url: string
+  }[]
+}
+
+const navMainBase: NavItem[] = [
   {
     title: "Главная",
     url: ".",
@@ -78,8 +90,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         if (prevItem?.title === "separator") return false
       }
       return true
-    })
-    .map(({ adminOnly, ...rest }) => rest)
+    }) as NavItem[]
 
   return (
     <Sidebar collapsible="icon" {...props}>

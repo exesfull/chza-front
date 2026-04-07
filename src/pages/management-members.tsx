@@ -25,7 +25,6 @@ import {
   Shield,
   UserMinus,
   Check,
-  X,
 } from "lucide-react"
 
 interface Member {

@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { Link, useNavigate } from "react-router-dom"
+import { useNavigate } from "react-router-dom"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import {
@@ -21,7 +21,7 @@ import { ThemeToggle } from "@/components/theme-toggle"
 
 export function TeamsPage() {
   const { user } = useUser()
-  const { teams, loading, refreshTeams } = useTeams()
+  const { teams, loading } = useTeams()
   const navigate = useNavigate()
   const [sortBy, setSortBy] = useState<SortBy>("name_asc")
 

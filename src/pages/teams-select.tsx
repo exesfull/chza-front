@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/select"
 import { CheckCircle, LogOut, Plus, Archive } from "lucide-react"
 import { useUser } from "@/hooks/use-user"
-import { useTeams, sortTeams, type SortBy, formatJoinedDate } from "@/hooks/use-teams"
+import { useTeams, sortTeams, type SortBy } from "@/hooks/use-teams"
 import { ThemeToggle } from "@/components/theme-toggle"
 
 export function TeamsPage() {
@@ -124,9 +124,6 @@ export function TeamsPage() {
                       </Avatar>
                       <div className="flex flex-1 flex-col">
                         <span className="font-medium">{team.name}</span>
-                        <span className="text-xs text-muted-foreground">
-                          Добавлена: {formatJoinedDate(team.joined_at)}
-                        </span>
                       </div>
                     </div>
                   </CardHeader>

@@ -16,5 +16,14 @@ export default defineConfig(({ mode }) => {
         "@": path.resolve(__dirname, "./src"),
       },
     },
+    server: {
+      proxy: {
+        "/api": {
+          target: "https://chza.exesfull.com",
+          changeOrigin: true,
+          secure: false,
+        },
+      },
+    },
   }
 })

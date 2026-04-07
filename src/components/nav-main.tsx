@@ -1,7 +1,7 @@
 "use client"
 
 import { ChevronRight, type LucideIcon } from "lucide-react"
-import { Link, useLocation } from "react-router-dom"
+import { Link, useLocation, useParams, useNavigate } from "react-router-dom"
 
 import {
   Collapsible,
@@ -19,6 +19,9 @@ import {
 } from "@/components/ui/sidebar"
 import { cn } from "@/lib/utils"
 
+import { useTeams } from "@/hooks/use-teams"
+import { Skeleton } from "@/components/ui/skeleton"
+
 export function NavMain({
   items,
 }: {
@@ -27,6 +30,7 @@ export function NavMain({
     url: string
     icon?: LucideIcon
     isActive?: boolean
+    adminOnly?: boolean
     items?: {
       title: string
       url: string
@@ -34,6 +38,39 @@ export function NavMain({
   }[]
 }) {
   const location = useLocation()
+  const { teamId } = useParams()
+  const navigate = useNavigate()
+  const { teamMembership } = useTeams()
+
+  // Show skeleton while membership (admin status) is loading
+  if (!teamMembership) {
+    return (
+      <SidebarGroup>
+        <SidebarMenu>
+          {Array.from({ length: 4 }).map((_, i) => (
+            <SidebarMenuItem key={i}>
+              <div className="flex h-8 items-center gap-2 px-2 animate-pulse">
+                <Skeleton className="size-4" />
+                <Skeleton className="h-3 w-20" />
+              </div>
+            </SidebarMenuItem>
+          ))}
+        </SidebarMenu>
+      </SidebarGroup>
+    )
+  }
+
+  const resolveUrl = (url: string) => {
+    if (url === ".") return `/teams/${teamId}`
+    if (url.startsWith("/")) return url
+    return `/teams/${teamId}/${url}`
+  }
+
+  const isActivePath = (url: string) => {
+    const resolved = resolveUrl(url)
+    if (url === ".") return location.pathname === `/teams/${teamId}` || location.pathname === `/teams/${teamId}/`
+    return location.pathname === resolved || location.pathname.startsWith(resolved + "/")
+  }
 
   return (
     <SidebarGroup>
@@ -52,7 +89,7 @@ export function NavMain({
                 <CollapsibleTrigger asChild>
                   <SidebarMenuButton
                     tooltip={item.title}
-                    isActive={item.items?.some((sub) => sub.url === location.pathname)}
+                    isActive={isActivePath(item.url)}
                   >
                     {item.icon && <item.icon />}
                     <span>{item.title}</span>
@@ -63,8 +100,8 @@ export function NavMain({
                   <SidebarMenuSub>
                     {item.items?.map((subItem) => (
                       <SidebarMenuSubItem key={subItem.title}>
-                        <SidebarMenuSubButton asChild isActive={location.pathname === subItem.url}>
-                          <Link to={subItem.url}>
+                        <SidebarMenuSubButton asChild isActive={isActivePath(subItem.url)}>
+                          <Link to={resolveUrl(subItem.url)}>
                             <span>{subItem.title}</span>
                           </Link>
                         </SidebarMenuSubButton>
@@ -76,8 +113,8 @@ export function NavMain({
             </Collapsible>
           ) : (
             <SidebarMenuItem key={item.title}>
-              <SidebarMenuButton asChild isActive={location.pathname === item.url}>
-                <Link to={item.url}>
+              <SidebarMenuButton asChild isActive={isActivePath(item.url)}>
+                <Link to={resolveUrl(item.url)}>
                   {item.icon && <item.icon />}
                   <span>{item.title}</span>
                 </Link>

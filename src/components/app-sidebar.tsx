@@ -2,9 +2,6 @@
 
 import * as React from "react"
 import {
-  AudioWaveform,
-  Command,
-  GalleryVerticalEnd,
   LayoutDashboard,
   ListTodo,
   Link2,
@@ -19,6 +16,7 @@ import { NavMain } from "@/components/nav-main"
 import { NavUser } from "@/components/nav-user"
 import { NavFooter } from "@/components/nav-footer"
 import { TeamSwitcher } from "@/components/team-switcher"
+import { useTeams } from "@/hooks/use-teams"
 import {
   Sidebar,
   SidebarContent,
@@ -27,43 +25,25 @@ import {
   SidebarRail,
 } from "@/components/ui/sidebar"
 
-const teams = [
-  {
-    name: "Acme Inc",
-    logo: GalleryVerticalEnd,
-    plan: "Enterprise",
-  },
-  {
-    name: "Acme Corp.",
-    logo: AudioWaveform,
-    plan: "Startup",
-  },
-  {
-    name: "Evil Corp.",
-    logo: Command,
-    plan: "Free",
-  },
-]
-
-const navMain = [
+const navMainBase = [
   {
     title: "Главная",
-    url: "/",
+    url: ".",
     icon: LayoutDashboard,
   },
   {
     title: "Задачи",
-    url: "/tasks",
+    url: "tasks",
     icon: ListTodo,
   },
   {
     title: "Ссылки",
-    url: "/links",
+    url: "links",
     icon: Link2,
   },
   {
     title: "Календарь",
-    url: "/calendar",
+    url: "calendar",
     icon: CalendarDays,
   },
   {
@@ -74,6 +54,7 @@ const navMain = [
     url: "/management/general",
     icon: Shield,
     isActive: false,
+    adminOnly: true,
     items: [
       {
         title: "Основное",
@@ -88,10 +69,25 @@ const navMain = [
 ]
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
+  const { isAdmin } = useTeams()
+
+  const navMain = navMainBase.filter((item, idx) => {
+    if (item.adminOnly && !isAdmin) return false
+    // Hide separator if next item (admin-only) is hidden
+    if (item.title === "separator") {
+      const nextItem = navMainBase[idx + 1]
+      if (nextItem?.adminOnly && !isAdmin) return false
+      // Also hide if previous was separator
+      const prevItem = navMainBase[idx - 1]
+      if (prevItem?.title === "separator") return false
+    }
+    return true
+  })
+
   return (
     <Sidebar collapsible="icon" {...props}>
       <SidebarHeader>
-        <TeamSwitcher teams={teams} />
+        <TeamSwitcher />
       </SidebarHeader>
       <SidebarContent>
         <NavMain items={navMain} />

@@ -7,6 +7,8 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
+import { Skeleton } from "@/components/ui/skeleton"
+import { useTeams } from "@/hooks/use-teams"
 import { cn } from "@/lib/utils"
 
 const footerItems = [
@@ -29,6 +31,24 @@ const footerItems = [
 
 export function NavFooter() {
   const location = useLocation()
+  const { teamMembership } = useTeams()
+
+  if (!teamMembership) {
+    return (
+      <SidebarGroup>
+        <SidebarMenu>
+          {footerItems.map((_, i) => (
+            <SidebarMenuItem key={i}>
+              <div className="flex h-8 items-center gap-2 px-2 animate-pulse">
+                <Skeleton className="size-4" />
+                <Skeleton className="h-3 w-24" />
+              </div>
+            </SidebarMenuItem>
+          ))}
+        </SidebarMenu>
+      </SidebarGroup>
+    )
+  }
 
   return (
     <SidebarGroup>

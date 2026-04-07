@@ -30,19 +30,36 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar"
 import { useUser } from "@/hooks/use-user"
+import { Skeleton } from "@/components/ui/skeleton"
 
 export function NavUser() {
   const { isMobile } = useSidebar()
-  const { user } = useUser()
+  const { user, loading } = useUser()
+
+  if (loading) {
+    return (
+      <SidebarMenu>
+        <SidebarMenuItem>
+          <div className="flex h-8 items-center gap-2 px-2 animate-pulse">
+            <Skeleton className="size-8 rounded-lg" />
+            <div className="flex flex-1 flex-col gap-1">
+              <Skeleton className="h-3 w-20" />
+              <Skeleton className="h-2.5 w-28" />
+            </div>
+          </div>
+        </SidebarMenuItem>
+      </SidebarMenu>
+    )
+  }
 
   const displayName = user
     ? `${user.last_name} ${user.first_name}`
-    : "Загрузка..."
+    : "Пользователь"
   const displayEmail = user?.email || ""
   const displayAvatar = user?.img_url || ""
   const initials = user
     ? `${user.last_name?.[0] ?? ""}${user.first_name?.[0] ?? ""}`.toUpperCase()
-    : "UN"
+    : "П"
 
   return (
     <SidebarMenu>
@@ -54,7 +71,7 @@ export function NavUser() {
               className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
             >
               <Avatar className="h-8 w-8 rounded-lg">
-                <AvatarImage src={displayAvatar} alt={displayName} />
+                <AvatarImage src={displayAvatar} alt={displayName} onError={() => {}} />
                 <AvatarFallback className="rounded-lg">{initials}</AvatarFallback>
               </Avatar>
               <div className="grid flex-1 text-left text-sm leading-tight">

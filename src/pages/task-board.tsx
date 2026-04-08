@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from "react"
 import { useParams, Link } from "react-router-dom"
-import { ChevronRight, Plus, LayoutGrid, Loader2, Archive, Trash2 } from "lucide-react"
+import { ChevronRight, Plus, LayoutGrid, Loader2, Archive, Trash2, Settings, Pencil, ListTodo, Table } from "lucide-react"
 import { useTaskLists } from "@/hooks/use-task-lists"
 import { api } from "@/lib/api"
 import type { TaskColumn } from "@/types/task"
@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Progress } from "@/components/ui/progress"
 import { KanbanColumn } from "@/components/kanban-column"
+import { TableView } from "@/components/table-view"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   Dialog,
@@ -18,6 +19,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu"
 import { cn } from "@/lib/utils"
 
 const TEMPLATE_COLS = [
@@ -33,9 +41,11 @@ export function TaskBoardPage() {
     getListInfo,
     updateListColsSort,
     editListCol,
+    editList,
     createListCol,
     fetchTasks,
     getTasksForColumn,
+    tasks,
     createTask,
     toggleTask,
     updateTaskText,
@@ -64,6 +74,11 @@ export function TaskBoardPage() {
   const [isUpdating, setIsUpdating] = useState(false)
   const [pollInterval, setPollInterval] = useState(3000)
   const [consecutiveMatches, setConsecutiveMatches] = useState(0)
+
+  // List settings
+  const [renamingList, setRenamingList] = useState(false)
+  const [newListName, setNewListName] = useState("")
+  const [stagesOpen, setStagesOpen] = useState(false)
 
   // Template creation state
   const [creatingTemplate, setCreatingTemplate] = useState(false)
@@ -350,7 +365,41 @@ export function TaskBoardPage() {
       {/* Board header with Add column button */}
       <div className="flex shrink-0 items-center justify-between px-4 py-3 lg:px-6">
         <div className="flex items-center gap-3">
-          <h1 className="text-xl font-bold">{listInfo?.name || "Загрузка..."}</h1>
+          {renamingList ? (
+            <Input
+              value={newListName}
+              onChange={(e) => setNewListName(e.target.value)}
+              onBlur={() => {
+                if (newListName.trim() && listId) {
+                  editList?.(listId, { name: newListName.trim() }).then(() => {
+                    getListInfo(listId).then((info) => { if (info) setListInfo(info.list) })
+                    setRenamingList(false)
+                  })
+                } else {
+                  setRenamingList(false)
+                  setNewListName("")
+                }
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && newListName.trim() && listId) {
+                  editList?.(listId, { name: newListName.trim() }).then(() => {
+                    getListInfo(listId).then((info) => { if (info) setListInfo(info.list) })
+                    setRenamingList(false)
+                  })
+                }
+                if (e.key === "Escape") { setRenamingList(false); setNewListName(listInfo?.name || "") }
+              }}
+              className="h-8 w-48 text-xl font-bold"
+              autoFocus
+            />
+          ) : (
+            <h1
+              className="text-xl font-bold cursor-pointer hover:opacity-70 transition-opacity"
+              onDoubleClick={() => { setRenamingList(true); setNewListName(listInfo?.name || "") }}
+            >
+              {listInfo?.name || "Загрузка..."}
+            </h1>
+          )}
           {isUpdating && (
             <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
               <Loader2 className="size-4 animate-spin" />
@@ -358,48 +407,126 @@ export function TaskBoardPage() {
             </span>
           )}
         </div>
-        {!creatingColumn ? (
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              setDraggedColId(null)
-              setInsertAfterIdx(null)
-              setCreatingColumn(true)
-            }}
-          >
-            <Plus className="mr-1 size-4" />
-            Добавить колонку
-          </Button>
-        ) : (
-          <div className="flex items-center gap-2">
-            <Input
-              placeholder="Название колонки"
-              value={newColumnName}
-              onChange={(e) => setNewColumnName(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleAddColumn()}
-              className="max-w-xs"
-              autoFocus
-            />
-            <Button size="sm" onClick={handleAddColumn} disabled={!newColumnName.trim()}>
-              Создать
+        <div className="flex items-center gap-2">
+          {listInfo?.view_type !== "table" && !creatingColumn && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setDraggedColId(null)
+                setInsertAfterIdx(null)
+                setCreatingColumn(true)
+              }}
+            >
+              <Plus className="mr-1 size-4" />
+              Добавить колонку
             </Button>
-            <Button variant="ghost" size="sm" onClick={() => { setCreatingColumn(false); setNewColumnName("") }}>
-              Отмена
+          )}
+          {listInfo?.view_type !== "table" && creatingColumn && (
+            <div className="flex items-center gap-2">
+              <Input
+                placeholder="Название колонки"
+                value={newColumnName}
+                onChange={(e) => setNewColumnName(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleAddColumn()}
+                className="max-w-xs"
+                autoFocus
+              />
+              <Button size="sm" onClick={handleAddColumn} disabled={!newColumnName.trim()}>Создать</Button>
+              <Button variant="ghost" size="sm" onClick={() => { setCreatingColumn(false); setNewColumnName("") }}>Отмена</Button>
+            </div>
+          )}
+          {/* List settings gear */}
+          {listInfo?.view_type === "table" && (
+            <Button variant="outline" size="sm" onClick={() => setStagesOpen(true)}>
+              <ListTodo className="mr-1 size-4" />
+              Этапы
             </Button>
-          </div>
-        )}
+          )}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" className="size-8 p-0">
+                <Settings className="size-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="min-w-[220px]">
+              <DropdownMenuItem onClick={() => { setRenamingList(true); setNewListName(listInfo?.name || "") }}>
+                <Pencil className="mr-2 size-4" />
+                Переименовать лист
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => {
+                if (listId && listInfo) {
+                  const newView = listInfo.view_type === "kanban" ? "table" : "kanban"
+                  editList?.(listId, { view_type: newView }).then(() => {
+                    getListInfo(listId).then((info) => {
+                      if (info) { setListInfo(info.list); setColumns(info.cols) }
+                    })
+                  })
+                }
+              }}>
+                {listInfo?.view_type === "table" ? (
+                  <><LayoutGrid className="mr-2 size-4" />Переключить на Канбан</>
+                ) : (
+                  <><Table className="mr-2 size-4" />Переключить на Таблицу</>
+                )}
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => {
+                if (listId) {
+                  columns.forEach((col) => {
+                    archiveAllTasksInColumn(listId, col.id, true).then(() => fetchTasks(listId))
+                  })
+                }
+              }}>
+                <Archive className="mr-2 size-4" />
+                Архивировать выполненные
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </div>
 
       {/* Kanban board - scrollable area */}
-      <div
-        ref={containerRef}
-        className="flex-1 overflow-x-auto p-4 lg:p-6"
-        style={{ minHeight: 0 }}
-        onDragOver={handleColumnDragOver}
-        onDrop={handleColumnDrop}
-      >
+      {listInfo?.view_type === "table" ? (
+        <TableView
+          columns={columns}
+          tasks={tasks}
+          onToggleTask={(taskId) => {
+            const task = tasks.find((t) => t.id === taskId)
+            if (task && listId) toggleTask(listId, taskId, !!task.closed_at)
+          }}
+          onUpdateTaskDeadline={(taskId, deadline) => { if (listId) updateTaskDeadline(listId, taskId, deadline) }}
+          onUpdateTaskPriority={(taskId, priority) => { if (listId) updateTaskPriority(listId, taskId, priority) }}
+          onUpdateTaskColumn={(taskId, columnId) => { if (listId) moveTask(listId, taskId, columnId).then(() => fetchTasks(listId)) }}
+          onArchiveTask={(taskId) => { if (listId) archiveTask(listId, taskId) }}
+          onDeleteTask={(taskId) => { if (listId) deleteTask(listId, taskId) }}
+          onUpdateTaskText={(taskId, text) => { if (listId) updateTaskText(listId, taskId, text) }}
+          onUpdateTaskDescription={(taskId, desc) => { if (listId) updateTaskDescription(listId, taskId, desc) }}
+          onCreateTask={(columnId, title) => { if (listId) createTask(listId, columnId, title) }}
+          onAddColumn={(name) => { if (listId) createListCol(listId, name).then(() => getListInfo(listId).then((info) => { if (info) setColumns(info.cols) })) }}
+          onRenameColumn={(columnId, name) => { if (listId) editListCol?.(listId, columnId, { name }).then(() => getListInfo(listId).then((info) => { if (info) setColumns(info.cols) })) }}
+          editListCol={(columnId, updates) => { if (listId) return editListCol?.(listId, columnId, updates as any) ?? Promise.resolve(false); return Promise.resolve(false) }}
+          onDeleteColumn={(columnId) => { if (listId) editListCol?.(listId, columnId, { is_deleted: true }).then(() => getListInfo(listId).then((info) => { if (info) setColumns(info.cols) })) }}
+          onDeleteColumnWithTasks={async (columnId, onProgress) => {
+            if (listId) {
+              await deleteAllTasksInColumn(listId, columnId, onProgress)
+              return true
+            }
+            return false
+          }}
+          stagesOpen={stagesOpen}
+          onStagesOpenChange={setStagesOpen}
+          teamLogin={teamLogin!}
+        />
+      ) : (
+        <div
+          ref={containerRef}
+          className="flex-1 overflow-x-auto p-4 lg:p-6"
+          style={{ minHeight: 0 }}
+          onDragOver={handleColumnDragOver}
+          onDrop={handleColumnDrop}
+        >
         {columns.length === 0 && !creatingTemplate ? (
           /* Empty state */
           <div className="flex h-full items-center justify-center">
@@ -550,6 +677,7 @@ export function TaskBoardPage() {
         </div>
         )}
       </div>
+      )}
 
       {/* Confirmation dialog for task delete/archive */}
       <Dialog open={confirmTaskId !== null} onOpenChange={(open) => { if (!open) setConfirmTaskId(null) }}>
@@ -596,6 +724,41 @@ export function TaskBoardPage() {
               <span><kbd className="px-1.5 py-0.5 rounded bg-muted text-[10px] font-mono">Enter</kbd> — в архив</span>
               <span><kbd className="px-1.5 py-0.5 rounded bg-muted text-[10px] font-mono">Esc</kbd> — закрыть</span>
             </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Rename list dialog */}
+      <Dialog open={renamingList} onOpenChange={(open) => { if (!open) { setRenamingList(false); setNewListName("") } }}>
+        <DialogContent className="sm:max-w-[400px]">
+          <DialogHeader>
+            <DialogTitle>Переименовать лист</DialogTitle>
+          </DialogHeader>
+          <Input
+            value={newListName}
+            onChange={(e) => setNewListName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && newListName.trim() && listId) {
+                editList?.(listId, { name: newListName.trim() }).then(() => {
+                  getListInfo(listId).then((info) => { if (info) setListInfo(info.list) })
+                  setRenamingList(false)
+                })
+              }
+              if (e.key === "Escape") { setRenamingList(false); setNewListName("") }
+            }}
+            placeholder="Название листа"
+            autoFocus
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setRenamingList(false); setNewListName("") }}>Отмена</Button>
+            <Button onClick={() => {
+              if (newListName.trim() && listId) {
+                editList?.(listId, { name: newListName.trim() }).then(() => {
+                  getListInfo(listId).then((info) => { if (info) setListInfo(info.list) })
+                  setRenamingList(false)
+                })
+              }
+            }} disabled={!newListName.trim()}>Сохранить</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

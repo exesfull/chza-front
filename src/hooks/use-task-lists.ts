@@ -102,7 +102,7 @@ export function useTaskLists(teamLogin: string | undefined) {
       if (updates.name !== undefined) formData.append("name", updates.name)
       if (updates.description !== undefined) formData.append("description", updates.description)
       if (updates.view_type !== undefined) formData.append("view_type", updates.view_type)
-      if (updates.is_deleted !== undefined) formData.append("is_deleted", String(updates.is_deleted))
+      if (updates.is_deleted !== undefined) formData.append("is_deleted", updates.is_deleted ? "true" : "false")
       if (updates.is_archived !== undefined) formData.append("is_archived", String(updates.is_archived))
       const { data } = await api.post("/main/task/editList/", formData, {
         headers: { "Content-Type": "multipart/form-data" },
@@ -290,8 +290,14 @@ export function useTaskLists(teamLogin: string | undefined) {
   }, [])
 
   const archiveAllInColumn = useCallback(async (columnId: string) => {
-    const now = new Date().toISOString()
-    setTasks((prev) => prev.map((t) => t.column_id === columnId ? { ...t, closed_at: now } : t))
+    const now = new Date()
+    const localDateTime = now.getFullYear() + '-' +
+      String(now.getMonth() + 1).padStart(2, '0') + '-' +
+      String(now.getDate()).padStart(2, '0') + 'T' +
+      String(now.getHours()).padStart(2, '0') + ':' +
+      String(now.getMinutes()).padStart(2, '0') + ':' +
+      String(now.getSeconds()).padStart(2, '0')
+    setTasks((prev) => prev.map((t) => t.column_id === columnId ? { ...t, closed_at: localDateTime } : t))
   }, [])
 
   // Fetch tasks for a list from API
@@ -308,6 +314,9 @@ export function useTaskLists(teamLogin: string | undefined) {
           closed_at: apiTask.closed_at,
           priority: apiTask.priority as "low" | "medium" | "high",
           order: apiTask.sort_order,
+          created_by: apiTask.created_by,
+          created_at: apiTask.created_at,
+          updated_at: apiTask.updated_at,
         }))
         setTasks(mapped)
         return mapped
@@ -340,6 +349,9 @@ export function useTaskLists(teamLogin: string | undefined) {
           closed_at: data.data.closed_at || null,
           priority: data.data.priority || null,
           order: data.data.sort_order,
+          created_by: data.data.created_by || "",
+          created_at: data.data.created_at || new Date().toISOString(),
+          updated_at: data.data.updated_at || new Date().toISOString(),
         }
         setTasks((prev) => [...prev, newTask])
         return newTask
@@ -358,8 +370,19 @@ export function useTaskLists(teamLogin: string | undefined) {
       formData.append("team_login", teamLogin)
       formData.append("list_id", listId)
       formData.append("task_id", taskId)
-      // Send empty string to uncomplete, or current datetime to complete
-      formData.append("closed_at", currentlyCompleted ? "" : new Date().toISOString())
+      // Send empty string to uncomplete, or local datetime to complete (without timezone 'Z')
+      if (currentlyCompleted) {
+        formData.append("closed_at", "")
+      } else {
+        const now = new Date()
+        const localDateTime = now.getFullYear() + '-' +
+          String(now.getMonth() + 1).padStart(2, '0') + '-' +
+          String(now.getDate()).padStart(2, '0') + 'T' +
+          String(now.getHours()).padStart(2, '0') + ':' +
+          String(now.getMinutes()).padStart(2, '0') + ':' +
+          String(now.getSeconds()).padStart(2, '0')
+        formData.append("closed_at", localDateTime)
+      }
       const { data } = await api.post("/main/task/editTask/", formData, {
         headers: { "Content-Type": "multipart/form-data" },
       })

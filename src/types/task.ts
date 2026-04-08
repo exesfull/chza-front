@@ -41,6 +41,9 @@ export interface Task {
   closed_at: string | null
   priority: "low" | "medium" | "high"
   order: number
+  created_by: string
+  created_at: string
+  updated_at: string
 }
 
 export const PRIORITY_COLORS: Record<string, string> = {

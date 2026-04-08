@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { useNavigate } from "react-router-dom"
+import { useNavigate, Link, useLocation } from "react-router-dom"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import {
@@ -14,10 +14,61 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { CheckCircle, LogOut, Plus, Archive } from "lucide-react"
+import { CheckCircle, LogOut, Plus, Archive, Users, Settings, HelpCircle } from "lucide-react"
 import { useUser } from "@/hooks/use-user"
 import { useTeams, sortTeams, type SortBy } from "@/hooks/use-teams"
 import { ThemeToggle } from "@/components/theme-toggle"
+import { cn } from "@/lib/utils"
+
+const navItems = [
+  {
+    title: "Главная",
+    url: "/",
+    icon: CheckCircle,
+  },
+  {
+    title: "Мои команды",
+    url: "/teams",
+    icon: Users,
+  },
+  {
+    title: "Настройки",
+    url: "/settings",
+    icon: Settings,
+  },
+  {
+    title: "Помощь",
+    url: "/help",
+    icon: HelpCircle,
+  },
+]
+
+function TopNav() {
+  const location = useLocation()
+
+  return (
+    <nav className="flex items-center gap-1 border-b bg-muted/50 px-6 py-2">
+      {navItems.map((item) => {
+        const isActive = location.pathname === item.url
+        return (
+          <Link
+            key={item.url}
+            to={item.url}
+            className={cn(
+              "flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+              isActive
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            <item.icon className="size-4" />
+            {item.title}
+          </Link>
+        )
+      })}
+    </nav>
+  )
+}
 
 export function TeamsPage() {
   const { user } = useUser()
@@ -36,8 +87,8 @@ export function TeamsPage() {
 
   const sortedTeams = sortTeams(teams, sortBy)
 
-  const handleSelectTeam = (teamId: string) => {
-    navigate(`/teams/${teamId}`)
+  const handleSelectTeam = (teamLogin: string) => {
+    navigate(`/teams/${teamLogin}`)
   }
 
   return (
@@ -68,6 +119,9 @@ export function TeamsPage() {
           </Button>
         </div>
       </header>
+
+      {/* Top navigation */}
+      <TopNav />
 
       {/* Main */}
       <main className="flex flex-1 items-start justify-center p-6">
@@ -112,7 +166,7 @@ export function TeamsPage() {
                 <Card
                   key={team.id}
                   className="cursor-pointer transition-colors hover:bg-muted"
-                  onClick={() => handleSelectTeam(team.id)}
+                  onClick={() => handleSelectTeam(team.login)}
                 >
                   <CardHeader className="pb-3">
                     <div className="flex items-center gap-4">

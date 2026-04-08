@@ -37,7 +37,7 @@ export function NavMain({
   }[]
 }) {
   const location = useLocation()
-  const { teamId } = useParams()
+  const { teamLogin } = useParams()
   const { teamMembership } = useTeams()
 
   // Show skeleton while membership (admin status) is loading
@@ -59,14 +59,14 @@ export function NavMain({
   }
 
   const resolveUrl = (url: string) => {
-    if (url === ".") return `/teams/${teamId}`
+    if (url === ".") return `/teams/${teamLogin}`
     if (url.startsWith("/")) return url
-    return `/teams/${teamId}/${url}`
+    return `/teams/${teamLogin}/${url}`
   }
 
   const isActivePath = (url: string) => {
     const resolved = resolveUrl(url)
-    if (url === ".") return location.pathname === `/teams/${teamId}` || location.pathname === `/teams/${teamId}/`
+    if (url === ".") return location.pathname === `/teams/${teamLogin}` || location.pathname === `/teams/${teamLogin}/`
     return location.pathname === resolved || location.pathname.startsWith(resolved + "/")
   }
 

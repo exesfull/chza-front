@@ -52,7 +52,7 @@ export function TeamSwitcher() {
   // Use membership data for current team display (title + img_url from API)
   const membershipTeam = teamMembership?.team
   const current = membershipTeam
-    ? { id: membershipTeam.id, name: membershipTeam.title, img_url: membershipTeam.img_url, joined_at: "" }
+    ? { id: membershipTeam.id, name: membershipTeam.title, img_url: membershipTeam.img_url, joined_at: "", login: "" }
     : activeTeam || sortedTeams[0] || null
 
   if (!current) {
@@ -61,7 +61,7 @@ export function TeamSwitcher() {
 
   const handleSelectTeam = (team: typeof current) => {
     setActiveTeam(team)
-    navigate(`/teams/${team.id}`)
+    navigate(`/teams/${team.login}`)
   }
 
   return (
@@ -73,7 +73,7 @@ export function TeamSwitcher() {
               size="lg"
               className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
             >
-              <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground overflow-hidden">
+              <div className="flex aspect-square size-8 items-center justify-center rounded-lg overflow-hidden">
                 <Avatar className="size-full">
                   <AvatarImage src={current.img_url} />
                   <AvatarFallback className="text-xs rounded-lg">
@@ -136,7 +136,7 @@ export function TeamSwitcher() {
                 onClick={() => handleSelectTeam(team)}
                 className="gap-2 p-2"
               >
-                <div className="flex size-6 shrink-0 items-center justify-center rounded-md border overflow-hidden">
+                <div className="flex size-6 shrink-0 items-center justify-center rounded-md overflow-hidden">
                   <Avatar className="size-full">
                     <AvatarImage src={team.img_url} />
                     <AvatarFallback className="text-[10px]">

@@ -3,6 +3,7 @@ import { api } from "@/lib/api"
 
 export interface TeamInfo {
   id: string
+  login: string
   name: string
   img_url: string
   joined_at: string
@@ -30,7 +31,7 @@ interface TeamsContextType {
   activeTeam: TeamInfo | null
   setActiveTeam: (team: TeamInfo | null) => void
   teamMembership: TeamMembership | null
-  checkTeamMembership: (teamId: string) => Promise<void>
+  checkTeamMembership: (teamLogin: string) => Promise<void>
   isAdmin: boolean
 }
 
@@ -44,7 +45,7 @@ export function TeamsProvider({ children }: { children: ReactNode }) {
 
   const refreshTeams = async () => {
     try {
-      const { data } = await api.get("/main/user/myTeams/")
+      const { data } = await api.get("/user/myTeams/")
       if (data.status && Array.isArray(data.data)) {
         setTeams(data.data)
         if (activeTeam) {
@@ -59,9 +60,9 @@ export function TeamsProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  const checkTeamMembership = useCallback(async (teamId: string) => {
+  const checkTeamMembership = useCallback(async (teamLogin: string) => {
     try {
-      const { data } = await api.get(`/main/team/checkTeamMembership/?team_id=${teamId}`)
+      const { data } = await api.get(`/main/team/checkTeamMembership/?team_login=${teamLogin}`)
       if (data.status && data.data) {
         setTeamMembership(data.data)
       }

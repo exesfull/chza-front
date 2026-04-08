@@ -25,7 +25,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
 
   const refreshUser = async () => {
     try {
-      const { data } = await api.get("/main/user/myInfo/")
+      const { data } = await api.get("/user/myInfo/")
       if (data.status && data.data) {
         setUser(data.data)
       }

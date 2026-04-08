@@ -28,30 +28,30 @@ function Skeleton() {
 }
 
 export function TeamLayout() {
-  const { teamId } = useParams()
+  const { teamLogin } = useParams()
   const { teams, setActiveTeam, checkTeamMembership, teamMembership } = useTeams()
   const [switching, setSwitching] = useState(false)
-  const lastCheckedTeamId = useRef<string | null>(null)
+  const lastCheckedTeamLogin = useRef<string | null>(null)
 
   useEffect(() => {
-    if (teamId && teamId !== lastCheckedTeamId.current) {
+    if (teamLogin && teamLogin !== lastCheckedTeamLogin.current) {
       setSwitching(true)
-      lastCheckedTeamId.current = teamId
-      checkTeamMembership(teamId).finally(() => {
+      lastCheckedTeamLogin.current = teamLogin
+      checkTeamMembership(teamLogin).finally(() => {
         setSwitching(false)
       })
-      const team = teams.find((t) => t.id === teamId)
+      const team = teams.find((t) => t.login === teamLogin)
       if (team) {
         setActiveTeam(team)
       }
     }
-  }, [teamId, teams, setActiveTeam, checkTeamMembership])
+  }, [teamLogin, teams, setActiveTeam, checkTeamMembership])
 
   return (
     <TooltipProvider delayDuration={0}>
       <SidebarProvider>
         <AppSidebar />
-        <SidebarInset>
+        <SidebarInset className="overflow-hidden">
           <header className="sticky top-0 z-10 flex h-12 shrink-0 items-center justify-between gap-2 border-b bg-background/90 px-4 transition-[width,height] ease-linear lg:px-6">
             <div className="flex items-center gap-2">
               <SidebarTrigger className="-ml-1" />
@@ -66,7 +66,7 @@ export function TeamLayout() {
               <ThemeToggle />
             </div>
           </header>
-          <div className="flex flex-1 flex-col">
+          <div className="flex flex-1 flex-col overflow-hidden">
             {switching ? <Skeleton /> : <Outlet />}
           </div>
         </SidebarInset>

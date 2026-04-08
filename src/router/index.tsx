@@ -4,6 +4,7 @@ import { LandingPage } from '@/pages/landing'
 import { TeamsPage } from '@/pages/teams-select'
 import { TeamDashboardPage } from '@/pages/team-dashboard'
 import { TasksPage } from '@/pages/tasks'
+import { TaskBoardPage } from '@/pages/task-board'
 import { LinksPage } from '@/pages/links'
 import { CalendarPage } from '@/pages/calendar'
 import { SettingsPage } from '@/pages/settings'
@@ -27,7 +28,7 @@ export const router = createBrowserRouter([
     element: <TeamsPage />,
   },
   {
-    path: 'teams/:teamId',
+    path: 'teams/:teamLogin',
     element: <TeamLayout />,
     children: [
       {
@@ -37,6 +38,10 @@ export const router = createBrowserRouter([
       {
         path: 'tasks',
         element: <TasksPage />,
+      },
+      {
+        path: 'tasks/:listId',
+        element: <TaskBoardPage />,
       },
       {
         path: 'links',

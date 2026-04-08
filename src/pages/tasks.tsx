@@ -1,401 +1,416 @@
-import { useState } from "react"
-import { Badge } from "@/components/ui/badge"
+import { useState, useEffect, useRef } from "react"
+import { useNavigate, useParams } from "react-router-dom"
+import { Plus, Search, FolderOpen, MoreHorizontal, ArrowUpDown, ArrowUpAZ, ArrowUpZA, CalendarArrowDown, CalendarArrowUp, LayoutGrid, Table, Pencil, Trash2, Archive } from "lucide-react"
+import { useTaskLists, type TaskListSort } from "@/hooks/use-task-lists"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
+import { Card, CardContent } from "@/components/ui/card"
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import {
-  GripVertical,
-  Loader,
-  CircleCheck,
-  MoreVertical,
-  Plus,
-  LayoutGrid,
-  ChevronDown,
-  ChevronLeft,
-  ChevronRight,
-  ChevronsLeft,
-  ChevronsRight,
-} from "lucide-react"
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+} from "@/components/ui/dropdown-menu"
+import { Skeleton } from "@/components/ui/skeleton"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 
-interface Task {
-  id: number
-  name: string
-  sectionType: string
-  status: "done" | "in-process"
-  target: number
-  limit: number
-  reviewer: string
-}
-
-const initialTasks: Task[] = [
-  {
-    id: 1,
-    name: "Cover page",
-    sectionType: "Cover page",
-    status: "in-process",
-    target: 18,
-    limit: 5,
-    reviewer: "Eddie Lake",
-  },
-  {
-    id: 2,
-    name: "Table of contents",
-    sectionType: "Table of contents",
-    status: "done",
-    target: 29,
-    limit: 24,
-    reviewer: "Eddie Lake",
-  },
-  {
-    id: 3,
-    name: "Executive summary",
-    sectionType: "Narrative",
-    status: "done",
-    target: 10,
-    limit: 13,
-    reviewer: "Eddie Lake",
-  },
-  {
-    id: 4,
-    name: "Technical approach",
-    sectionType: "Narrative",
-    status: "done",
-    target: 27,
-    limit: 23,
-    reviewer: "Jamik Tashpulatov",
-  },
-  {
-    id: 5,
-    name: "Design",
-    sectionType: "Narrative",
-    status: "in-process",
-    target: 2,
-    limit: 16,
-    reviewer: "Jamik Tashpulatov",
-  },
-  {
-    id: 6,
-    name: "Capabilities",
-    sectionType: "Narrative",
-    status: "in-process",
-    target: 20,
-    limit: 8,
-    reviewer: "Jamik Tashpulatov",
-  },
-  {
-    id: 7,
-    name: "Integration with existing systems",
-    sectionType: "Narrative",
-    status: "in-process",
-    target: 19,
-    limit: 21,
-    reviewer: "Jamik Tashpulatov",
-  },
-  {
-    id: 8,
-    name: "Innovation and Advantages",
-    sectionType: "Narrative",
-    status: "done",
-    target: 25,
-    limit: 26,
-    reviewer: "",
-  },
-  {
-    id: 9,
-    name: "Overview of EMR's Innovative Solutions",
-    sectionType: "Technical content",
-    status: "done",
-    target: 7,
-    limit: 23,
-    reviewer: "",
-  },
-  {
-    id: 10,
-    name: "Advanced Algorithms and Machine Learning",
-    sectionType: "Narrative",
-    status: "done",
-    target: 30,
-    limit: 28,
-    reviewer: "",
-  },
-]
+const MAX_NAME = 200
+const MAX_DESC = 1000
 
 export function TasksPage() {
-  const [tasks, setTasks] = useState<Task[]>(initialTasks)
-  const [selectedRows, setSelectedRows] = useState<number[]>([])
-  const [currentPage, setCurrentPage] = useState(1)
-  const rowsPerPage = 10
+  const { teamLogin } = useParams()
+  const { lists, loading, createList, editList, deleteList, archiveList, refreshLists } = useTaskLists(teamLogin)
+  const navigate = useNavigate()
+  const [search, setSearch] = useState("")
+  const [sortBy, setSortBy] = useState<TaskListSort>("name_asc")
+  const [sortOpen, setSortOpen] = useState(false)
 
-  const totalPages = Math.ceil(tasks.length / rowsPerPage)
-  const paginatedTasks = tasks.slice(
-    (currentPage - 1) * rowsPerPage,
-    currentPage * rowsPerPage
+  // Create dialog
+  const [createOpen, setCreateOpen] = useState(false)
+  const [createName, setCreateName] = useState("")
+  const [createDesc, setCreateDesc] = useState("")
+  const [createSubmitting, setCreateSubmitting] = useState(false)
+
+  // Edit dialog
+  const [editOpen, setEditOpen] = useState(false)
+  const [editId, setEditId] = useState<string | null>(null)
+  const [editName, setEditName] = useState("")
+  const [editDesc, setEditDesc] = useState("")
+  const [editView, setEditView] = useState<"kanban" | "table">("kanban")
+  const [editSubmitting, setEditSubmitting] = useState(false)
+
+  // Confirm dialog (archive/delete)
+  const [confirmOpen, setConfirmOpen] = useState(false)
+  const [confirmAction, setConfirmAction] = useState<"archive" | "delete" | null>(null)
+  const [confirmId, setConfirmId] = useState<string | null>(null)
+
+  const nameInputRef = useRef<HTMLInputElement>(null)
+
+  const filteredLists = lists.filter((l) =>
+    l.name.toLowerCase().includes(search.toLowerCase())
   )
 
-  const toggleSelectAll = () => {
-    if (selectedRows.length === paginatedTasks.length) {
-      setSelectedRows([])
+  const sortedLists = (() => {
+    const sorted = [...filteredLists]
+    switch (sortBy) {
+      case "name_asc":
+        return sorted.sort((a, b) => a.name.localeCompare(b.name, "ru"))
+      case "name_desc":
+        return sorted.sort((a, b) => b.name.localeCompare(a.name, "ru"))
+      case "date_created_asc":
+        return sorted.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+      case "date_created_desc":
+        return sorted.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      default:
+        return sorted
+    }
+  })()
+
+  // Reset form on dialog open
+  useEffect(() => {
+    if (createOpen) {
+      setCreateName("")
+      setCreateDesc("")
+      setCreateSubmitting(false)
+      setTimeout(() => nameInputRef.current?.focus(), 100)
+    }
+  }, [createOpen])
+
+  useEffect(() => {
+    if (editOpen && editId) {
+      const list = lists.find((l) => l.id === editId)
+      if (list) {
+        setEditName(list.name)
+        setEditDesc(list.description || "")
+        setEditView(list.view_type === "table" ? "table" : "kanban")
+      }
+      setEditSubmitting(false)
+      setTimeout(() => nameInputRef.current?.focus(), 100)
+    }
+  }, [editOpen, editId, lists])
+
+  const handleCreate = async () => {
+    if (!createName.trim() || createSubmitting) return
+    setCreateSubmitting(true)
+    const list = await createList(createName.trim(), createDesc.trim())
+    if (list) {
+      setCreateOpen(false)
+      navigate(`/teams/${teamLogin}/tasks/${list.id}`)
     } else {
-      setSelectedRows(paginatedTasks.map((task) => task.id))
+      setCreateSubmitting(false)
     }
   }
 
-  const toggleSelectRow = (id: number) => {
-    if (selectedRows.includes(id)) {
-      setSelectedRows(selectedRows.filter((rowId) => rowId !== id))
+  const handleEdit = async () => {
+    if (!editName.trim() || !editId || editSubmitting) return
+    setEditSubmitting(true)
+    const ok = await editList(editId, {
+      name: editName.trim(),
+      description: editDesc.trim(),
+      view_type: editView,
+    })
+    if (ok) {
+      refreshLists()
+      setEditOpen(false)
     } else {
-      setSelectedRows([...selectedRows, id])
+      setEditSubmitting(false)
     }
   }
 
-  const updateTask = (id: number, field: keyof Task, value: any) => {
-    setTasks(
-      tasks.map((task) => (task.id === id ? { ...task, [field]: value } : task))
-    )
+  const handleConfirm = async () => {
+    if (!confirmId || !confirmAction) return
+    if (confirmAction === "delete") {
+      await deleteList(confirmId)
+    } else {
+      await archiveList(confirmId)
+    }
+    setConfirmOpen(false)
+    setConfirmAction(null)
+    setConfirmId(null)
   }
 
   return (
-    <div className="flex flex-1 flex-col">
-      <div className="@container/main flex flex-1 flex-col gap-2">
-        <div className="flex flex-col gap-4 py-4 md:gap-6 md:py-6">
-          {/* Tabs */}
-          <div className="flex items-center justify-between px-4 lg:px-6">
-        <div className="flex items-center gap-2">
-          <div className="flex items-center justify-center rounded-lg p-1 text-muted-foreground">
-            <button className="inline-flex h-8 flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1 text-sm font-medium text-foreground bg-background shadow-sm">
-              Outline
-            </button>
-            <button className="inline-flex h-8 flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1 text-sm font-medium text-foreground/60 hover:text-foreground">
-              Past Performance{" "}
-              <Badge variant="secondary" className="size-5 rounded-full px-1">
-                3
-              </Badge>
-            </button>
-            <button className="inline-flex h-8 flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1 text-sm font-medium text-foreground/60 hover:text-foreground">
-              Key Personnel{" "}
-              <Badge variant="secondary" className="size-5 rounded-full px-1">
-                2
-              </Badge>
-            </button>
-            <button className="inline-flex h-8 flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1 text-sm font-medium text-foreground/60 hover:text-foreground">
-              Focus Documents
-            </button>
-          </div>
+    <div className="flex flex-col gap-6 p-4 md:p-6">
+      {/* Header */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">Списки задач</h1>
+          <p className="text-sm text-muted-foreground">
+            {lists.length} {lists.length === 1 ? "лист" : lists.length < 5 ? "листа" : "листов"}
+          </p>
         </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm">
-            <LayoutGrid className="size-4" />
-            <span className="hidden lg:inline">Customize Columns</span>
-            <span className="lg:hidden">Columns</span>
-            <ChevronDown className="size-4" />
-          </Button>
-          <Button variant="outline" size="sm">
-            <Plus className="size-4" />
-            <span className="hidden lg:inline">Add Section</span>
-          </Button>
-        </div>
+        <Button onClick={() => setCreateOpen(true)}>
+          <Plus className="mr-2 size-4" />
+          Создать лист
+        </Button>
       </div>
 
-      {/* Table */}
-      <div className="px-4 lg:px-6">
-        <div className="overflow-hidden rounded-lg border">
-          <Table>
-            <TableHeader className="sticky top-0 z-10 bg-muted">
-              <TableRow>
-                <TableHead className="w-8"></TableHead>
-                <TableHead className="w-8">
-                  <div className="flex items-center justify-center">
-                    <button
-                      onClick={toggleSelectAll}
-                      className="size-4 shrink-0 rounded border border-input shadow-xs transition-shadow outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
-                      aria-label="Select all"
-                    >
-                      {selectedRows.length === paginatedTasks.length && (
-                        <CircleCheck className="size-4 fill-primary text-primary-foreground" />
-                      )}
-                    </button>
-                  </div>
-                </TableHead>
-                <TableHead>Header</TableHead>
-                <TableHead>Section Type</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="text-right">Target</TableHead>
-                <TableHead className="text-right">Limit</TableHead>
-                <TableHead>Reviewer</TableHead>
-                <TableHead className="w-8"></TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {paginatedTasks.map((task) => (
-                <TableRow key={task.id} data-state={selectedRows.includes(task.id) ? "selected" : undefined}>
-                  <TableCell>
-                    <Button variant="ghost" size="icon" className="size-7 text-muted-foreground">
-                      <GripVertical className="size-3" />
-                      <span className="sr-only">Drag to reorder</span>
-                    </Button>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center justify-center">
-                      <button
-                        onClick={() => toggleSelectRow(task.id)}
-                        className="size-4 shrink-0 rounded border border-input shadow-xs transition-shadow outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
-                        aria-label="Select row"
-                      >
-                        {selectedRows.includes(task.id) && (
-                          <CircleCheck className="size-4 fill-primary text-primary-foreground" />
-                        )}
-                      </button>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <Button variant="link" className="h-auto p-0 text-left font-medium">
-                      {task.name}
-                    </Button>
-                  </TableCell>
-                  <TableCell>
-                    <div className="w-32">
-                      <Badge variant="outline" className="text-muted-foreground">
-                        {task.sectionType}
-                      </Badge>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="outline" className="text-muted-foreground">
-                      {task.status === "done" ? (
-                        <>
-                          <CircleCheck className="size-3 fill-green-500 dark:fill-green-400" />
-                          Done
-                        </>
-                      ) : (
-                        <>
-                          <Loader className="size-3" />
-                          In Process
-                        </>
-                      )}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <form>
-                      <Input
-                        id={`${task.id}-target`}
-                        type="number"
-                        value={task.target}
-                        onChange={(e) =>
-                          updateTask(task.id, "target", parseInt(e.target.value))
-                        }
-                        className="h-8 w-16 border-transparent bg-transparent text-right shadow-none hover:bg-input/30 focus-visible:bg-background"
-                      />
-                    </form>
-                  </TableCell>
-                  <TableCell>
-                    <form>
-                      <Input
-                        id={`${task.id}-limit`}
-                        type="number"
-                        value={task.limit}
-                        onChange={(e) =>
-                          updateTask(task.id, "limit", parseInt(e.target.value))
-                        }
-                        className="h-8 w-16 border-transparent bg-transparent text-right shadow-none hover:bg-input/30 focus-visible:bg-background"
-                      />
-                    </form>
-                  </TableCell>
-                  <TableCell>
-                    {task.reviewer || (
-                      <select className="flex h-8 w-38 items-center justify-between gap-2 rounded-md border border-input bg-transparent px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/50">
-                        <option value="">Assign reviewer</option>
-                        <option value="Eddie Lake">Eddie Lake</option>
-                        <option value="Jamik Tashpulatov">Jamik Tashpulatov</option>
-                      </select>
-                    )}
-                    {task.reviewer && <span className="text-sm">{task.reviewer}</span>}
-                  </TableCell>
-                  <TableCell>
-                    <Button variant="ghost" size="icon" className="size-8 text-muted-foreground">
-                      <MoreVertical className="size-4" />
-                      <span className="sr-only">Open menu</span>
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+      {/* Search + Sort */}
+      <div className="flex items-center gap-2">
+        <div className="relative max-w-sm flex-1">
+          <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            placeholder="Поиск листов..."
+            className="pl-9"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
         </div>
+        <DropdownMenu open={sortOpen} onOpenChange={setSortOpen}>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" size="sm">
+              <ArrowUpDown className="mr-1.5 size-3.5" />
+              Сортировка
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuRadioGroup value={sortBy} onValueChange={(v) => setSortBy(v as TaskListSort)}>
+              <DropdownMenuRadioItem value="name_asc">
+                <ArrowUpAZ className="mr-2 size-3.5" />
+                Название (А-Я)
+              </DropdownMenuRadioItem>
+              <DropdownMenuRadioItem value="name_desc">
+                <ArrowUpZA className="mr-2 size-3.5" />
+                Название (Я-А)
+              </DropdownMenuRadioItem>
+              <DropdownMenuRadioItem value="date_created_desc">
+                <CalendarArrowDown className="mr-2 size-3.5" />
+                Дата создания (новые)
+              </DropdownMenuRadioItem>
+              <DropdownMenuRadioItem value="date_created_asc">
+                <CalendarArrowUp className="mr-2 size-3.5" />
+                Дата создания (старые)
+              </DropdownMenuRadioItem>
+            </DropdownMenuRadioGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
 
-      {/* Pagination */}
-      <div className="flex items-center justify-between px-4 py-4 lg:px-6">
-        <div className="hidden flex-1 text-sm text-muted-foreground lg:flex">
-          {selectedRows.length} of {tasks.length} row(s) selected.
+      {/* Lists grid */}
+      {loading ? (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Card key={i} className="animate-pulse">
+              <CardContent className="flex items-center gap-4 p-4">
+                <Skeleton className="size-10 shrink-0 rounded-lg" />
+                <div className="flex flex-1 flex-col gap-2">
+                  <Skeleton className="h-4 w-32" />
+                  <Skeleton className="h-3 w-20" />
+                </div>
+              </CardContent>
+            </Card>
+          ))}
         </div>
-        <div className="flex w-full items-center gap-8 lg:w-fit">
-          <div className="hidden items-center gap-2 lg:flex">
-            <label htmlFor="rows-per-page" className="text-sm font-medium">
-              Rows per page
-            </label>
-            <select
-              id="rows-per-page"
-              className="flex h-8 w-20 items-center justify-between gap-2 rounded-md border border-input bg-transparent px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+      ) : sortedLists.length > 0 ? (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {sortedLists.map((list) => (
+            <Card
+              key={list.id}
+              className="group cursor-pointer transition-colors hover:bg-muted"
             >
-              <option value="10">10</option>
-              <option value="20">20</option>
-              <option value="50">50</option>
-            </select>
-          </div>
-          <div className="flex w-fit items-center justify-center text-sm font-medium">
-            Page {currentPage} of {totalPages}
-          </div>
-          <div className="ml-auto flex items-center gap-2 lg:ml-0">
-            <Button
-              variant="outline"
-              size="icon"
-              className="hidden size-8 lg:flex"
-              disabled={currentPage === 1}
-              onClick={() => setCurrentPage(1)}
-            >
-              <ChevronsLeft className="size-4" />
-              <span className="sr-only">Go to first page</span>
-            </Button>
-            <Button
-              variant="outline"
-              size="icon"
-              disabled={currentPage === 1}
-              onClick={() => setCurrentPage(currentPage - 1)}
-            >
-              <ChevronLeft className="size-4" />
-              <span className="sr-only">Go to previous page</span>
-            </Button>
-            <Button
-              variant="outline"
-              size="icon"
-              disabled={currentPage === totalPages}
-              onClick={() => setCurrentPage(currentPage + 1)}
-            >
-              <ChevronRight className="size-4" />
-              <span className="sr-only">Go to next page</span>
-            </Button>
-            <Button
-              variant="outline"
-              size="icon"
-              className="hidden size-8 lg:flex"
-              disabled={currentPage === totalPages}
-              onClick={() => setCurrentPage(totalPages)}
-            >
-              <ChevronsRight className="size-4" />
-              <span className="sr-only">Go to last page</span>
-            </Button>
-          </div>
+              <CardContent className="flex items-center gap-4 p-4">
+                <div
+                  className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"
+                  onClick={() => navigate(`/teams/${teamLogin}/tasks/${list.id}`)}
+                >
+                  {list.view_type === "kanban" ? (
+                    <LayoutGrid className="size-5" />
+                  ) : (
+                    <Table className="size-5" />
+                  )}
+                </div>
+                <div className="flex flex-1 flex-col gap-0.5 min-w-0">
+                  <span
+                    className="font-medium hover:underline truncate"
+                    onClick={() => navigate(`/teams/${teamLogin}/tasks/${list.id}`)}
+                  >
+                    {list.name}
+                  </span>
+                  {list.description && (
+                    <span className="text-xs text-muted-foreground truncate">
+                      {list.description}
+                    </span>
+                  )}
+                </div>
+                {/* Always visible 3-dot menu */}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="icon" className="size-8">
+                      <MoreHorizontal className="size-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={() => { setEditId(list.id); setEditOpen(true) }}>
+                      <Pencil className="mr-2 size-4" />
+                      Редактировать
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => { setConfirmId(list.id); setConfirmAction("archive"); setConfirmOpen(true) }}>
+                      <Archive className="mr-2 size-4" />
+                      Архивировать
+                    </DropdownMenuItem>
+                    <DropdownMenuItem className="text-destructive" onClick={() => { setConfirmId(list.id); setConfirmAction("delete"); setConfirmOpen(true) }}>
+                      <Trash2 className="mr-2 size-4" />
+                      Удалить
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </CardContent>
+            </Card>
+          ))}
         </div>
-          </div>
+      ) : search ? (
+        <div className="flex flex-col items-center justify-center py-12 text-center text-muted-foreground">
+          <Search className="mb-2 size-8 opacity-50" />
+          <p>Ничего не найдено</p>
         </div>
-      </div>
+      ) : (
+        <div className="flex flex-col items-center justify-center py-12 text-center text-muted-foreground">
+          <FolderOpen className="mb-2 size-8 opacity-50" />
+          <p>Нет листов задач. Создайте первый!</p>
+        </div>
+      )}
+
+      {/* Create Dialog */}
+      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Создать лист задач</DialogTitle>
+            <DialogDescription>Заполните информацию о новом листе задач</DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-4 py-2">
+            <div className="flex flex-col gap-2">
+              <label className="text-sm font-medium">Название *</label>
+              <Input
+                ref={nameInputRef}
+                placeholder="Название листа"
+                value={createName}
+                maxLength={MAX_NAME}
+                onChange={(e) => setCreateName(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleCreate()}
+              />
+              <span className="text-xs text-muted-foreground text-right">{createName.length}/{MAX_NAME}</span>
+            </div>
+            <div className="flex flex-col gap-2">
+              <label className="text-sm font-medium">Описание</label>
+              <Textarea
+                placeholder="Описание листа"
+                value={createDesc}
+                maxLength={MAX_DESC}
+                onChange={(e) => setCreateDesc(e.target.value)}
+                rows={3}
+              />
+              <span className="text-xs text-muted-foreground text-right">{createDesc.length}/{MAX_DESC}</span>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreateOpen(false)}>Отмена</Button>
+            <Button onClick={handleCreate} disabled={!createName.trim() || createSubmitting}>Создать</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Dialog */}
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Редактировать лист</DialogTitle>
+            <DialogDescription>Измените информацию о листе задач</DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-4 py-2">
+            <div className="flex flex-col gap-2">
+              <label className="text-sm font-medium">Название *</label>
+              <Input
+                ref={nameInputRef}
+                placeholder="Название листа"
+                value={editName}
+                maxLength={MAX_NAME}
+                onChange={(e) => setEditName(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleEdit()}
+              />
+              <span className="text-xs text-muted-foreground text-right">{editName.length}/{MAX_NAME}</span>
+            </div>
+            <div className="flex flex-col gap-2">
+              <label className="text-sm font-medium">Описание</label>
+              <Textarea
+                placeholder="Описание листа"
+                value={editDesc}
+                maxLength={MAX_DESC}
+                onChange={(e) => setEditDesc(e.target.value)}
+                rows={3}
+              />
+              <span className="text-xs text-muted-foreground text-right">{editDesc.length}/{MAX_DESC}</span>
+            </div>
+            <div className="flex flex-col gap-2">
+              <label className="text-sm font-medium">Тип</label>
+              <Select value={editView} onValueChange={(v) => setEditView(v as "kanban" | "table")}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="kanban">
+                    <div className="flex items-center gap-2">
+                      <LayoutGrid className="size-4" />
+                      Канбан
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="table">
+                    <div className="flex items-center gap-2">
+                      <Table className="size-4" />
+                      Таблица
+                    </div>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditOpen(false)}>Отмена</Button>
+            <Button onClick={handleEdit} disabled={!editName.trim() || editSubmitting}>Сохранить</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Confirm Dialog (Archive/Delete) */}
+      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {confirmAction === "delete" ? "Удалить лист?" : "Архивировать лист?"}
+            </DialogTitle>
+            <DialogDescription>
+              {confirmAction === "delete"
+                ? "Лист будет удалён безвозвратно. Это действие нельзя отменить."
+                : "Лист будет перемещён в архив."}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmOpen(false)}>Отмена</Button>
+            <Button
+              variant={confirmAction === "delete" ? "destructive" : "default"}
+              onClick={handleConfirm}
+            >
+              {confirmAction === "delete" ? "Удалить" : "Архивировать"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

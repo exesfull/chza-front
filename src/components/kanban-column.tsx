@@ -1,19 +1,25 @@
-import { useState } from "react"
-import { MoreHorizontal, Pencil, Trash2, Archive, Palette, Plus, X } from "lucide-react"
+import { useState, useEffect } from "react"
+import { MoreHorizontal, Pencil, Trash2, Archive, Plus, X } from "lucide-react"
 import { COLUMN_COLORS, type Task } from "@/types/task"
 import type { TaskColumn } from "@/types/task"
 import { KanbanCard } from "@/components/kanban-card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Progress } from "@/components/ui/progress"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-  DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
 } from "@/components/ui/dropdown-menu"
 import { cn } from "@/lib/utils"
 
@@ -25,14 +31,14 @@ interface KanbanColumnProps {
   onCancelCreateTask: () => void
   onCreateTask: (text: string) => void
   onToggleTask: (id: string) => void
-  onDeleteTask: (id: string) => void
   onUpdateTaskText: (id: string, text: string) => void
   onUpdateTaskDescription: (id: string, desc: string) => void
   onUpdateTaskDeadline: (id: string, deadline: string) => void
   onUpdateTaskPriority: (id: string, priority: string) => void
   onArchiveTask: (id: string) => void
-  onArchiveAll: () => void
-  onArchiveCompleted: () => void
+  onArchiveAll: (onProgress?: (done: number, total: number) => void) => Promise<void>
+  onArchiveCompleted: (onProgress?: (done: number, total: number) => void) => Promise<void>
+  onDeleteAllTasks: (onProgress?: (done: number, total: number) => void) => Promise<void>
   onDragStartTask: (taskId: string) => void
   onDragEndTask: () => void
   onDropTask: (columnId: string) => void
@@ -43,6 +49,9 @@ interface KanbanColumnProps {
   listId?: string
   isDragged?: boolean
   isTaskDragOver?: boolean
+  selectedTaskId: string | null
+  onSelectTask: (id: string | null) => void
+  onConfirmTaskAction: (id: string) => void
   editListCol?: (listId: string, colId: string, updates: { name?: string; description?: string; color_hex?: string; is_deleted?: boolean }) => Promise<boolean>
   onColumnUpdated?: () => void
 }
@@ -55,7 +64,6 @@ export function KanbanColumn({
   onCancelCreateTask,
   onCreateTask,
   onToggleTask,
-  onDeleteTask,
   onUpdateTaskText,
   onUpdateTaskDescription,
   onUpdateTaskDeadline,
@@ -63,6 +71,7 @@ export function KanbanColumn({
   onArchiveTask,
   onArchiveAll,
   onArchiveCompleted,
+  onDeleteAllTasks,
   onDragStartTask,
   onDragEndTask,
   onDropTask,
@@ -73,6 +82,9 @@ export function KanbanColumn({
   listId,
   isDragged,
   isTaskDragOver,
+  selectedTaskId,
+  onSelectTask,
+  onConfirmTaskAction,
   editListCol,
   onColumnUpdated,
 }: KanbanColumnProps) {
@@ -80,6 +92,31 @@ export function KanbanColumn({
   const [renaming, setRenaming] = useState(false)
   const [renameText, setRenameText] = useState(column.name)
   const [newTaskText, setNewTaskText] = useState("")
+
+  // Mass action dialog states
+  const [massAction, setMassAction] = useState<"archiveAll" | "archiveCompleted" | "deleteAll" | "deleteColumn" | null>(null)
+  const [massActionProgress, setMassActionProgress] = useState(0)
+  const [massActionTotal, setMassActionTotal] = useState(0)
+  const [deleteColumnStep, setDeleteColumnStep] = useState<"tasks" | "column" | null>(null)
+
+  // Close dialog when progress reaches total
+  useEffect(() => {
+    if (massAction !== null && massActionTotal > 0 && massActionProgress >= massActionTotal) {
+      const timer = setTimeout(() => {
+        if (massAction === "deleteColumn") {
+          // After tasks are deleted, proceed to column deletion
+          setDeleteColumnStep("column")
+          setMassActionProgress(0)
+          setMassActionTotal(0)
+        } else {
+          setMassAction(null)
+          setMassActionProgress(0)
+          setMassActionTotal(0)
+        }
+      }, 800)
+      return () => clearTimeout(timer)
+    }
+  }, [massActionProgress, massActionTotal, massAction])
 
   const handleCreateTask = () => {
     if (newTaskText.trim()) {
@@ -94,6 +131,7 @@ export function KanbanColumn({
       data-kanban-col
       className={cn(
         "flex min-w-[280px] max-w-[320px] flex-col rounded-lg border bg-muted/30",
+        "max-h-[calc(100vh-14rem)]",
         isDragged && "opacity-30"
       )}
     >
@@ -158,59 +196,58 @@ export function KanbanColumn({
                 <MoreHorizontal className="size-4" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
+            <DropdownMenuContent align="end" className="min-w-[200px]">
               <DropdownMenuItem onClick={() => { setRenaming(true); setRenameText(column.name) }}>
                 <Pencil className="mr-2 size-4" />
                 Переименовать
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={onArchiveAll}>
+              <DropdownMenuSeparator />
+              <div className="px-2 py-1.5">
+                <p className="mb-1.5 text-xs font-medium text-muted-foreground">Цвет колонки</p>
+                <div className="grid grid-cols-7 gap-1.5">
+                  {COLUMN_COLORS.map((c) => (
+                    <button
+                      key={c.value}
+                      onClick={async () => {
+                        if (listId && columnId && editListCol) {
+                          const ok = await editListCol(listId, columnId, { color_hex: c.value })
+                          if (ok) onColumnUpdated?.()
+                        }
+                      }}
+                      className="flex size-6 items-center justify-center rounded-full transition-transform hover:scale-125"
+                      style={{ backgroundColor: c.value }}
+                      title={c.name}
+                    >
+                      {column.color === c.value && (
+                        <span className="size-2 rounded-full bg-white" />
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => setMassAction("archiveAll")}>
                 <Archive className="mr-2 size-4" />
                 Архивировать все задачи
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={onArchiveCompleted}>
+              <DropdownMenuItem onClick={() => setMassAction("archiveCompleted")}>
                 <Archive className="mr-2 size-4" />
                 Архивировать выполненные
               </DropdownMenuItem>
-              <DropdownMenuSub>
-                <DropdownMenuSubTrigger>
-                  <Palette className="mr-2 size-4" />
-                  Цвет колонки
-                </DropdownMenuSubTrigger>
-                <DropdownMenuSubContent>
-                  <div className="grid grid-cols-4 gap-2 p-2">
-                    {COLUMN_COLORS.map((c) => (
-                      <button
-                        key={c.value}
-                        onClick={async () => {
-                          if (listId && columnId && editListCol) {
-                            const ok = await editListCol(listId, columnId, { color_hex: c.value })
-                            if (ok) onColumnUpdated?.()
-                          }
-                        }}
-                        className="flex size-7 items-center justify-center rounded-full transition-transform hover:scale-110"
-                        style={{ backgroundColor: c.value }}
-                        title={c.name}
-                      >
-                        {column.color === c.value && (
-                          <span className="size-2 rounded-full bg-white" />
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                </DropdownMenuSubContent>
-              </DropdownMenuSub>
+              <DropdownMenuItem onClick={() => setMassAction("deleteAll")}>
+                <Trash2 className="mr-2 size-4" />
+                Удалить все задачи
+              </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem
                 className="text-destructive"
-                onClick={async () => {
-                  if (listId && columnId && editListCol) {
-                    const ok = await editListCol(listId, columnId, { is_deleted: true })
-                    if (ok) onColumnUpdated?.()
-                  }
+                onClick={() => {
+                  setMassAction("deleteColumn")
+                  setDeleteColumnStep("tasks")
                 }}
               >
                 <Trash2 className="mr-2 size-4" />
-                Удалить
+                Удалить колонку
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -229,6 +266,12 @@ export function KanbanColumn({
             <textarea
               value={newTaskText}
               onChange={(e) => setNewTaskText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey && newTaskText.trim()) {
+                  e.preventDefault()
+                  handleCreateTask()
+                }
+              }}
               placeholder="Описание задачи..."
               className="min-h-[60px] w-full resize-none rounded border bg-transparent px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-ring"
               autoFocus
@@ -256,10 +299,18 @@ export function KanbanColumn({
       {/* Tasks */}
       <div
         className={cn(
-          "flex min-h-[100px] flex-1 flex-col gap-2 overflow-auto p-3 transition-colors",
+          "flex flex-1 flex-col gap-2 overflow-y-auto p-3 transition-colors",
+          "min-h-0",
           isTaskDragOver && "bg-primary/10"
         )}
         data-no-drag
+        onClick={(e) => {
+          // Deselect when clicking on empty area (not on a card or button)
+          const target = e.target as HTMLElement
+          if (!target.closest("[data-kanban-card]") && !target.closest("button") && !target.closest("[role='menuitem']")) {
+            onSelectTask(null)
+          }
+        }}
         onDragOver={(e) => {
           e.preventDefault()
           e.dataTransfer.dropEffect = "move"
@@ -285,18 +336,106 @@ export function KanbanColumn({
             closed_at={task.closed_at}
             priority={task.priority}
             order={task.order}
+            isSelected={selectedTaskId === task.id}
+            onSelect={(id) => onSelectTask(selectedTaskId === id ? null : id)}
             onToggle={onToggleTask}
-            onDelete={onDeleteTask}
+            onDelete={() => onConfirmTaskAction(task.id)}
+            onArchive={onArchiveTask}
             onUpdateText={onUpdateTaskText}
             onUpdateDescription={onUpdateTaskDescription}
             onUpdateDeadline={onUpdateTaskDeadline}
             onUpdatePriority={onUpdateTaskPriority}
-            onArchive={onArchiveTask}
             onDragStart={onDragStartTask}
             onDragEnd={onDragEndTask}
           />
         ))}
       </div>
+
+      {/* Mass action confirmation dialogs */}
+      {massAction && (
+        <Dialog open={massAction !== null} onOpenChange={(open) => { if (!open) { setMassAction(null); setMassActionProgress(0); setMassActionTotal(0); setDeleteColumnStep(null) } }}>
+          <DialogContent className="sm:max-w-[400px]">
+            <DialogHeader>
+              <DialogTitle>
+                {massAction === "archiveAll" && "Архивировать все задачи?"}
+                {massAction === "archiveCompleted" && "Архивировать выполненные?"}
+                {massAction === "deleteAll" && "Удалить все задачи?"}
+                {massAction === "deleteColumn" && deleteColumnStep === "tasks" && "Удалить все задачи колонки?"}
+                {massAction === "deleteColumn" && deleteColumnStep === "column" && "Удалить колонку?"}
+              </DialogTitle>
+              <DialogDescription>
+                {massAction === "archiveAll" && `Будет архивировано ${tasks.length} задач`}
+                {massAction === "archiveCompleted" && `Будет архивировано ${tasks.filter((t) => t.closed_at).length} выполненных задач`}
+                {massAction === "deleteAll" && `Будет удалено ${tasks.length} задач`}
+                {massAction === "deleteColumn" && deleteColumnStep === "tasks" && `Сначала нужно удалить ${tasks.length} задач в колонке`}
+                {massAction === "deleteColumn" && deleteColumnStep === "column" && `Колонка «${column.name}» будет удалена безвозвратно`}
+              </DialogDescription>
+            </DialogHeader>
+            {massActionProgress > 0 && (
+              <div className="space-y-2">
+                <Progress value={(massActionProgress / massActionTotal) * 100} className="h-2" />
+                <p className="text-center text-sm text-muted-foreground">
+                  Обработано {massActionProgress} из {massActionTotal}
+                </p>
+              </div>
+            )}
+            <DialogFooter>
+              <Button variant="outline" onClick={() => { setMassAction(null); setMassActionProgress(0); setMassActionTotal(0); setDeleteColumnStep(null) }}>
+                Отмена
+              </Button>
+              {massAction === "deleteColumn" && deleteColumnStep === "column" ? (
+                <Button
+                  variant="destructive"
+                  onClick={async () => {
+                    if (listId && columnId && editListCol) {
+                      const ok = await editListCol(listId, columnId, { is_deleted: true })
+                      if (ok) {
+                        setMassAction(null)
+                        setMassActionProgress(0)
+                        setMassActionTotal(0)
+                        setDeleteColumnStep(null)
+                        onColumnUpdated?.()
+                      }
+                    }
+                  }}
+                >
+                  Удалить колонку
+                </Button>
+              ) : (
+                <Button
+                  variant={massAction === "deleteAll" || massAction === "deleteColumn" ? "destructive" : "default"}
+                  disabled={massActionProgress > 0 && massActionProgress < massActionTotal}
+                  onClick={() => {
+                    if (!listId || !columnId) return
+                    setMassActionTotal(tasks.length)
+                    setMassActionProgress(0)
+                    if (massAction === "deleteAll" || massAction === "deleteColumn") {
+                      onDeleteAllTasks((done, total) => {
+                        setMassActionProgress(done)
+                        setMassActionTotal(total)
+                      })
+                    } else if (massAction === "archiveAll") {
+                      onArchiveAll((done, total) => {
+                        setMassActionProgress(done)
+                        setMassActionTotal(total)
+                      })
+                    } else if (massAction === "archiveCompleted") {
+                      onArchiveCompleted((done, total) => {
+                        setMassActionProgress(done)
+                        setMassActionTotal(total)
+                      })
+                    }
+                  }}
+                >
+                  {massAction === "archiveAll" && "Архивировать все"}
+                  {massAction === "archiveCompleted" && "Архивировать выполненные"}
+                  {(massAction === "deleteAll" || massAction === "deleteColumn") && deleteColumnStep === "tasks" && "Удалить все задачи"}
+                </Button>
+              )}
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   )
 }

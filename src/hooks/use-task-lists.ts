@@ -301,7 +301,7 @@ export function useTaskLists(teamLogin: string | undefined) {
       if (data.status && Array.isArray(data.data)) {
         const mapped: Task[] = data.data.map((apiTask: ApiTask) => ({
           id: apiTask.id,
-          column_id: apiTask["сol_id"],
+          column_id: apiTask.col_id,
           title: apiTask.title,
           description: apiTask.description,
           deadline_date: apiTask.deadline_date,
@@ -333,12 +333,12 @@ export function useTaskLists(teamLogin: string | undefined) {
       if (data.status && data.data) {
         const newTask: Task = {
           id: data.data.id,
-          column_id: data.data["сol_id"],
+          column_id: data.data.col_id,
           title: data.data.title,
           description: data.data.description || null,
           deadline_date: data.data.deadline_date || null,
           closed_at: data.data.closed_at || null,
-          priority: data.data.priority || "medium",
+          priority: data.data.priority || null,
           order: data.data.sort_order,
         }
         setTasks((prev) => [...prev, newTask])
@@ -503,7 +503,7 @@ export function useTaskLists(teamLogin: string | undefined) {
         headers: { "Content-Type": "multipart/form-data" },
       })
       if (data.status) {
-        setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, priority: data.data.priority || "medium" } : t))
+        setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, priority: data.data.priority || null } : t))
         return true
       }
     } catch (error) {
@@ -533,6 +533,83 @@ export function useTaskLists(teamLogin: string | undefined) {
     }
     return false
   }, [teamLogin])
+
+  // Delete task (status = "deleted")
+  const deleteTask = useCallback(async (listId: string, taskId: string): Promise<boolean> => {
+    if (!teamLogin) return false
+    try {
+      const formData = new FormData()
+      formData.append("team_login", teamLogin)
+      formData.append("list_id", listId)
+      formData.append("task_id", taskId)
+      formData.append("status", "deleted")
+      const { data } = await api.post("/main/task/editTask/", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      })
+      if (data.status) {
+        setTasks((prev) => prev.filter((t) => t.id !== taskId))
+        return true
+      }
+    } catch (error) {
+      console.error("Failed to delete task:", error)
+    }
+    return false
+  }, [teamLogin])
+
+  // Delete all tasks in a column
+  const deleteAllTasksInColumn = useCallback(async (listId: string, columnId: string, onProgress?: (done: number, total: number) => void): Promise<boolean> => {
+    if (!teamLogin) return false
+    const tasksInCol = tasks.filter((t) => t.column_id === columnId)
+    if (tasksInCol.length === 0) return true
+
+    for (let i = 0; i < tasksInCol.length; i++) {
+      try {
+        const formData = new FormData()
+        formData.append("team_login", teamLogin)
+        formData.append("list_id", listId)
+        formData.append("task_id", tasksInCol[i].id)
+        formData.append("status", "deleted")
+        await api.post("/main/task/editTask/", formData, {
+          headers: { "Content-Type": "multipart/form-data" },
+        })
+        onProgress?.(i + 1, tasksInCol.length)
+      } catch (error) {
+        console.error("Failed to delete task:", tasksInCol[i].id, error)
+      }
+    }
+    // Refresh tasks
+    setTasks((prev) => prev.filter((t) => t.column_id !== columnId))
+    return true
+  }, [teamLogin, tasks])
+
+  // Archive all tasks in a column
+  const archiveAllTasksInColumn = useCallback(async (listId: string, columnId: string, onlyCompleted: boolean = false, onProgress?: (done: number, total: number) => void): Promise<boolean> => {
+    if (!teamLogin) return false
+    let tasksInCol = tasks.filter((t) => t.column_id === columnId)
+    if (onlyCompleted) {
+      tasksInCol = tasksInCol.filter((t) => t.closed_at)
+    }
+    if (tasksInCol.length === 0) return true
+
+    for (let i = 0; i < tasksInCol.length; i++) {
+      try {
+        const formData = new FormData()
+        formData.append("team_login", teamLogin)
+        formData.append("list_id", listId)
+        formData.append("task_id", tasksInCol[i].id)
+        formData.append("status", "archived")
+        await api.post("/main/task/editTask/", formData, {
+          headers: { "Content-Type": "multipart/form-data" },
+        })
+        onProgress?.(i + 1, tasksInCol.length)
+      } catch (error) {
+        console.error("Failed to archive task:", tasksInCol[i].id, error)
+      }
+    }
+    // Refresh tasks - remove archived ones
+    setTasks((prev) => prev.filter((t) => t.column_id !== columnId || (onlyCompleted && !tasksInCol.find((at) => at.id === t.id))))
+    return true
+  }, [teamLogin, tasks])
 
   const getColumnsForList = useCallback((listId: string) => {
     return columns.filter((c) => c.list_id === listId).sort((a, b) => a.order - b.order)
@@ -571,8 +648,11 @@ export function useTaskLists(teamLogin: string | undefined) {
     updateTaskDeadline,
     updateTaskPriority,
     archiveTask,
+    deleteTask,
     moveTask,
     updateColTasksSort,
+    deleteAllTasksInColumn,
+    archiveAllTasksInColumn,
     getColumnsForList,
     getTasksForColumn,
   }

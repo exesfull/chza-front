@@ -18,7 +18,7 @@ export interface TaskColumn {
 export interface ApiTask {
   id: string
   task_list_id: string
-  "сol_id": string
+  col_id: string
   parent_task_id: string | null
   created_by: string
   created_at: string
@@ -58,4 +58,10 @@ export const COLUMN_COLORS = [
   { name: "Фиолетовый", value: "#a855f7" },
   { name: "Оранжевый", value: "#f97316" },
   { name: "Розовый", value: "#ec4899" },
+  { name: "Бирюзовый", value: "#14b8a6" },
+  { name: "Голубой", value: "#0ea5e9" },
+  { name: "Индиго", value: "#6366f1" },
+  { name: "Лайм", value: "#84cc16" },
+  { name: "Коралловый", value: "#f43f5e" },
+  { name: "Амбер", value: "#f59e0b" },
 ]

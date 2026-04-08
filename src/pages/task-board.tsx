@@ -1,14 +1,23 @@
 import { useState, useCallback, useEffect, useRef } from "react"
 import { useParams, Link } from "react-router-dom"
-import { ChevronRight, Plus, LayoutGrid, Loader2 } from "lucide-react"
+import { ChevronRight, Plus, LayoutGrid, Loader2, Archive, Trash2 } from "lucide-react"
 import { useTaskLists } from "@/hooks/use-task-lists"
+import { api } from "@/lib/api"
 import type { TaskColumn } from "@/types/task"
 import { COLUMN_COLORS } from "@/types/task"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Progress } from "@/components/ui/progress"
 import { KanbanColumn } from "@/components/kanban-column"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Progress } from "@/components/ui/progress"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { cn } from "@/lib/utils"
 
 const TEMPLATE_COLS = [
@@ -27,7 +36,6 @@ export function TaskBoardPage() {
     createListCol,
     fetchTasks,
     getTasksForColumn,
-    archiveAllInColumn,
     createTask,
     toggleTask,
     updateTaskText,
@@ -35,7 +43,10 @@ export function TaskBoardPage() {
     updateTaskDeadline,
     updateTaskPriority,
     archiveTask,
+    deleteTask,
     moveTask,
+    deleteAllTasksInColumn,
+    archiveAllTasksInColumn,
   } = useTaskLists(teamLogin)
 
   const [listInfo, setListInfo] = useState<{ id: string; name: string; description: string; view_type: string } | null>(null)
@@ -47,6 +58,12 @@ export function TaskBoardPage() {
   const [creatingTaskColumnId, setCreatingTaskColumnId] = useState<string | null>(null)
   const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null)
   const [taskDragOverColId, setTaskDragOverColId] = useState<string | null>(null)
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
+  const [confirmTaskId, setConfirmTaskId] = useState<string | null>(null)
+  const [listUpdatedAt, setListUpdatedAt] = useState<string | null>(null)
+  const [isUpdating, setIsUpdating] = useState(false)
+  const [pollInterval, setPollInterval] = useState(3000)
+  const [consecutiveMatches, setConsecutiveMatches] = useState(0)
 
   // Template creation state
   const [creatingTemplate, setCreatingTemplate] = useState(false)
@@ -65,12 +82,51 @@ export function TaskBoardPage() {
       if (info) {
         setListInfo(info.list)
         setColumns(info.cols)
+        setListUpdatedAt(info.list.updated_at)
+        setConsecutiveMatches(0)
+        setPollInterval(3000)
         // Fetch tasks after getting list info
         await fetchTasks(listId)
       }
       setLoading(false)
     })
   }, [listId, getListInfo, fetchTasks])
+
+  // Polling for list updates
+  useEffect(() => {
+    if (!listId || !listUpdatedAt || isUpdating) return
+    const timer = setInterval(async () => {
+      try {
+        const { data } = await api.get(`/main/task/getUpdatedTimeOnList/?team_login=${teamLogin}&list_id=${listId}`)
+        if (data.status && data.data?.updated_at) {
+          if (data.data.updated_at !== listUpdatedAt) {
+            // List has been updated - refresh everything
+            setConsecutiveMatches(0)
+            setPollInterval(3000)
+            setIsUpdating(true)
+            const info = await getListInfo(listId)
+            if (info) {
+              setListInfo(info.list)
+              setColumns(info.cols)
+              setListUpdatedAt(info.list.updated_at)
+              await fetchTasks(listId)
+            }
+            setIsUpdating(false)
+          } else {
+            // No changes
+            const newCount = consecutiveMatches + 1
+            if (newCount >= 3) {
+              setPollInterval(5000)
+            }
+            setConsecutiveMatches(newCount)
+          }
+        }
+      } catch (error) {
+        console.error("Polling error:", error)
+      }
+    }, pollInterval)
+    return () => clearInterval(timer)
+  }, [listId, listUpdatedAt, pollInterval, consecutiveMatches, isUpdating, teamLogin, getListInfo, fetchTasks])
 
   const handleAddColumn = async () => {
     if (!newColumnName.trim() || !listId) return
@@ -188,13 +244,75 @@ export function TaskBoardPage() {
     if (draggedTaskId && listId) {
       const ok = await moveTask(listId, draggedTaskId, columnId)
       if (ok) {
-        // Refresh tasks from API to get the updated state
         await fetchTasks(listId)
       }
       setDraggedTaskId(null)
       setTaskDragOverColId(null)
     }
   }, [draggedTaskId, listId, moveTask, fetchTasks])
+
+  const handleConfirmTaskAction = useCallback((taskId: string) => {
+    setConfirmTaskId(taskId)
+    setSelectedTaskId(null)
+  }, [])
+
+  // Global keyboard handler for selected tasks
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't handle if user is typing in an input
+      const target = e.target as HTMLElement
+      if (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable) return
+
+      // If confirmation dialog is open
+      if (confirmTaskId !== null) {
+        if (e.key === "Escape") {
+          setConfirmTaskId(null)
+          return
+        }
+        if ((e.key === "Delete" || e.key === "Backspace") && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+          e.preventDefault()
+          // Delete/Backspace → actually delete
+          if (confirmTaskId && listId) {
+            deleteTask(listId, confirmTaskId)
+          }
+          setConfirmTaskId(null)
+          return
+        }
+        if (e.key === "Enter") {
+          e.preventDefault()
+          // Enter → archive
+          if (confirmTaskId && listId) {
+            archiveTask(listId, confirmTaskId)
+          }
+          setConfirmTaskId(null)
+          return
+        }
+        return
+      }
+
+      // No dialog open, handle selection actions
+      if (!selectedTaskId) return
+
+      if (e.key === "Escape") {
+        setSelectedTaskId(null)
+        return
+      }
+
+      if (e.key === "Delete" || e.key === "Backspace") {
+        e.preventDefault()
+        if (e.ctrlKey || e.metaKey || e.shiftKey) {
+          // Ctrl/Shift+Delete → Archive directly
+          if (listId) archiveTask(listId, selectedTaskId)
+          setSelectedTaskId(null)
+        } else {
+          // Delete/Backspace → show confirm dialog
+          setConfirmTaskId(selectedTaskId)
+        }
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown)
+    return () => window.removeEventListener("keydown", handleKeyDown)
+  }, [selectedTaskId, confirmTaskId, listId, archiveTask, deleteTask])
 
   if (loading) {
     return (
@@ -231,7 +349,15 @@ export function TaskBoardPage() {
 
       {/* Board header with Add column button */}
       <div className="flex shrink-0 items-center justify-between px-4 py-3 lg:px-6">
-        <h1 className="text-xl font-bold">{listInfo?.name || "Загрузка..."}</h1>
+        <div className="flex items-center gap-3">
+          <h1 className="text-xl font-bold">{listInfo?.name || "Загрузка..."}</h1>
+          {isUpdating && (
+            <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
+              <Loader2 className="size-4 animate-spin" />
+              Обновляем...
+            </span>
+          )}
+        </div>
         {!creatingColumn ? (
           <Button
             type="button"
@@ -269,7 +395,7 @@ export function TaskBoardPage() {
       {/* Kanban board - scrollable area */}
       <div
         ref={containerRef}
-        className="flex-1 overflow-x-auto overflow-y-auto p-4 lg:p-6"
+        className="flex-1 overflow-x-auto p-4 lg:p-6"
         style={{ minHeight: 0 }}
         onDragOver={handleColumnDragOver}
         onDrop={handleColumnDrop}
@@ -354,7 +480,6 @@ export function TaskBoardPage() {
                         toggleTask(listId, taskId, !!task.closed_at)
                       }
                     }}
-                    onDeleteTask={() => {}}
                     onUpdateTaskText={(taskId, text) => {
                       if (listId) updateTaskText(listId, taskId, text)
                     }}
@@ -370,19 +495,29 @@ export function TaskBoardPage() {
                     onArchiveTask={(taskId) => {
                       if (listId) archiveTask(listId, taskId)
                     }}
-                    onArchiveAll={() => archiveAllInColumn(column.id)}
-                    onArchiveCompleted={() => {
-                      const tasksInCol = getTasksForColumn(column.id)
-                      tasksInCol.forEach((t) => {
-                        if (!t.closed_at && listId) {
-                          toggleTask(listId, t.id, false)
-                        }
-                      })
+                    onArchiveAll={async (onProgress) => {
+                      if (listId) {
+                        await archiveAllTasksInColumn(listId, column.id, false, onProgress)
+                        fetchTasks(listId)
+                      }
+                    }}
+                    onArchiveCompleted={async (onProgress) => {
+                      if (listId) {
+                        await archiveAllTasksInColumn(listId, column.id, true, onProgress)
+                        fetchTasks(listId)
+                      }
+                    }}
+                    onDeleteAllTasks={async (onProgress) => {
+                      if (listId) {
+                        await deleteAllTasksInColumn(listId, column.id, onProgress)
+                        fetchTasks(listId)
+                      }
                     }}
                     onDragStartTask={handleTaskDragStart}
                     onDragEndTask={handleTaskDragEnd}
                     onDropTask={handleTaskDrop}
-                    onDragOver={() => {}}
+                    onDragOver={() => handleTaskDragOver(column.id)}
+                    isTaskDragOver={taskDragOverColId === column.id}
                     onColumnDragStart={handleColumnDragStart}
                     onColumnDragEnd={handleColumnDragEnd}
                     columnId={column.id}
@@ -396,6 +531,9 @@ export function TaskBoardPage() {
                         })
                       }
                     }}
+                    selectedTaskId={selectedTaskId}
+                    onSelectTask={setSelectedTaskId}
+                    onConfirmTaskAction={handleConfirmTaskAction}
                   />
                 </div>
 
@@ -412,6 +550,55 @@ export function TaskBoardPage() {
         </div>
         )}
       </div>
+
+      {/* Confirmation dialog for task delete/archive */}
+      <Dialog open={confirmTaskId !== null} onOpenChange={(open) => { if (!open) setConfirmTaskId(null) }}>
+        <DialogContent className="sm:max-w-[400px]" onCloseAutoFocus={(e) => e.preventDefault()}>
+          <DialogHeader>
+            <DialogTitle>Что сделать с задачей?</DialogTitle>
+            <DialogDescription>
+              Выберите действие для задачи
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="flex-col gap-3 sm:flex-col">
+            <div className="flex gap-2 w-full">
+              <Button
+                variant="outline"
+                className="flex-1"
+                tabIndex={-1}
+                onClick={() => {
+                  if (confirmTaskId && listId) {
+                    archiveTask(listId, confirmTaskId)
+                  }
+                  setConfirmTaskId(null)
+                }}
+              >
+                <Archive className="mr-2 size-4" />
+                В архив <kbd className="ml-auto px-1.5 py-0.5 rounded bg-muted text-[10px] font-mono">Enter</kbd>
+              </Button>
+              <Button
+                variant="destructive"
+                className="flex-1"
+                tabIndex={-1}
+                onClick={() => {
+                  if (confirmTaskId && listId) {
+                    deleteTask(listId, confirmTaskId)
+                  }
+                  setConfirmTaskId(null)
+                }}
+              >
+                <Trash2 className="mr-2 size-4" />
+                Удалить <kbd className="ml-auto px-1.5 py-0.5 rounded bg-muted text-[10px] font-mono">Delete</kbd>
+              </Button>
+            </div>
+            <div className="flex flex-col gap-1 text-xs text-muted-foreground text-center">
+              <span><kbd className="px-1.5 py-0.5 rounded bg-muted text-[10px] font-mono">Delete</kbd> — удалить задачу</span>
+              <span><kbd className="px-1.5 py-0.5 rounded bg-muted text-[10px] font-mono">Enter</kbd> — в архив</span>
+              <span><kbd className="px-1.5 py-0.5 rounded bg-muted text-[10px] font-mono">Esc</kbd> — закрыть</span>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

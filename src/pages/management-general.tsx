@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -8,6 +8,10 @@ import { Camera, Upload } from "lucide-react"
 export function ManagementGeneralPage() {
   const [teamName, setTeamName] = useState("Acme Inc")
   const [description, setDescription] = useState("Enterprise team focused on innovative solutions")
+
+  useEffect(() => {
+    document.title = "Управление"
+  }, [])
 
   return (
     <div className="flex flex-col gap-6 p-4 md:p-6">

@@ -100,12 +100,21 @@ export function TaskBoardPage() {
         setListUpdatedAt(info.list.updated_at)
         setConsecutiveMatches(0)
         setPollInterval(3000)
+        // Set page title
+        document.title = info.list.name
         // Fetch tasks after getting list info
         await fetchTasks(listId)
       }
       setLoading(false)
     })
   }, [listId, getListInfo, fetchTasks])
+
+  // Update title when listInfo changes
+  useEffect(() => {
+    if (listInfo?.name) {
+      document.title = listInfo.name
+    }
+  }, [listInfo?.name])
 
   // Polling for list updates
   useEffect(() => {

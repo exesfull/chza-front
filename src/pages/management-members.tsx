@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -48,6 +48,10 @@ export function ManagementMembersPage() {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [dialogType, setDialogType] = useState<"promote" | "remove">("promote")
   const [selectedMember, setSelectedMember] = useState<Member | null>(null)
+
+  useEffect(() => {
+    document.title = "Участники"
+  }, [])
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(inviteLink)

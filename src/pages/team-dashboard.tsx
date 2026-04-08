@@ -1,3 +1,4 @@
+import { useEffect } from "react"
 import { useTeams } from "@/hooks/use-teams"
 import { Card, CardDescription, CardFooter, CardHeader, CardTitle, CardAction } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -5,7 +6,11 @@ import { TrendingUp, TrendingDown } from "lucide-react"
 
 export function TeamDashboardPage() {
   const { teamMembership } = useTeams()
-  const teamName = teamMembership?.team?.title || "Команда"
+  const teamName = teamMembership?.team?.title || "Чисто Задачи"
+
+  useEffect(() => {
+    document.title = teamName
+  }, [teamName])
 
   return (
     <div className="flex flex-col gap-4 py-4 md:gap-6 md:py-6">

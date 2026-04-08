@@ -63,6 +63,10 @@ export function TasksPage() {
 
   const nameInputRef = useRef<HTMLInputElement>(null)
 
+  useEffect(() => {
+    document.title = "Задачи"
+  }, [])
+
   const filteredLists = lists.filter((l) =>
     l.name.toLowerCase().includes(search.toLowerCase())
   )

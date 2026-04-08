@@ -1,4 +1,5 @@
-import { createBrowserRouter, RouterProvider } from 'react-router-dom'
+import { createBrowserRouter, RouterProvider, useLocation } from 'react-router-dom'
+import * as React from 'react'
 import { TeamLayout } from '@/components/layouts/team-layout'
 import { LandingPage } from '@/pages/landing'
 import { TeamsPage } from '@/pages/teams-select'
@@ -14,10 +15,20 @@ import { ManagementMembersPage } from '@/pages/management-members'
 import { NotFoundPage } from '@/pages/not-found'
 import { ForbiddenPage } from '@/pages/forbidden'
 
+// Update document title on route change
+function TitleUpdater() {
+  const location = useLocation()
+  React.useEffect(() => {
+    // Reset to default title, specific pages will override it
+    document.title = 'Чисто Задачи'
+  }, [location.pathname])
+  return null
+}
+
 export const router = createBrowserRouter([
   {
     path: '/',
-    element: <LandingPage />,
+    element: <><TitleUpdater /><LandingPage /></>,
   },
   {
     path: 'forbidden',

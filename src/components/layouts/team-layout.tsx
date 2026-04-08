@@ -47,6 +47,11 @@ export function TeamLayout() {
     }
   }, [teamLogin, teams, setActiveTeam, checkTeamMembership])
 
+  useEffect(() => {
+    if (teamMembership?.team?.title) document.title = teamMembership.team.title;
+    else document.title = "Чисто Задачи"
+  }, [teamMembership])
+
   return (
     <TooltipProvider delayDuration={0}>
       <SidebarProvider>

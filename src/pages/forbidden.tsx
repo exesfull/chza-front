@@ -1,8 +1,13 @@
+import { useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Link } from "react-router-dom"
 import { ShieldX, ArrowLeft } from "lucide-react"
 
 export function ForbiddenPage() {
+  useEffect(() => {
+    document.title = "Доступ запрещён"
+  }, [])
+
   return (
     <div className="flex min-h-svh flex-col items-center justify-center gap-6 p-6 text-center">
       <div className="flex size-20 items-center justify-center rounded-full bg-muted">

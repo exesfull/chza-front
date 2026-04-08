@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -43,6 +43,10 @@ export function LinksPage() {
   const [links, setLinks] = useState<LinkItem[]>(initialLinks)
   const [search, setSearch] = useState("")
   const [selectedGroup, setSelectedGroup] = useState("Все")
+
+  useEffect(() => {
+    document.title = "Ссылки"
+  }, [])
 
   const filteredLinks = links.filter((link) => {
     const matchesSearch =

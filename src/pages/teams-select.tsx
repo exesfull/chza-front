@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useNavigate, Link, useLocation } from "react-router-dom"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -47,7 +47,7 @@ function TopNav() {
   const location = useLocation()
 
   return (
-    <nav className="flex items-center gap-1 border-b bg-muted/50 px-6 py-2">
+    <nav className="flex flex-wrap items-center gap-1 border-b bg-muted/50 px-4 py-2 sm:px-6">
       {navItems.map((item) => {
         const isActive = location.pathname === item.url
         return (
@@ -55,14 +55,14 @@ function TopNav() {
             key={item.url}
             to={item.url}
             className={cn(
-              "flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+              "flex items-center gap-1.5 rounded-md px-2 py-1 text-xs sm:text-sm font-medium transition-colors",
               isActive
                 ? "bg-background text-foreground shadow-sm"
                 : "text-muted-foreground hover:text-foreground"
             )}
           >
-            <item.icon className="size-4" />
-            {item.title}
+            <item.icon className="size-3.5 sm:size-4" />
+            <span className="hidden sm:inline">{item.title}</span>
           </Link>
         )
       })}
@@ -72,9 +72,14 @@ function TopNav() {
 
 export function TeamsPage() {
   const { user } = useUser()
-  const { teams, loading } = useTeams()
+  const { teams, loading, activeTeam } = useTeams()
   const navigate = useNavigate()
   const [sortBy, setSortBy] = useState<SortBy>("name_asc")
+
+  useEffect(() => {
+    if (activeTeam) document.title = activeTeam.name;
+    else document.title = "Мои команды"
+  }, [activeTeam])
 
   const displayName = user
     ? `${user.last_name} ${user.first_name}`
@@ -94,28 +99,31 @@ export function TeamsPage() {
   return (
     <div className="flex min-h-svh flex-col">
       {/* Header */}
-      <header className="flex items-center justify-between border-b px-6 py-4">
+      <header className="flex items-center justify-between border-b px-4 py-3 sm:px-6 sm:py-4">
         <div className="flex items-center gap-2">
           <div className="flex size-8 items-center justify-center rounded-md bg-primary text-primary-foreground">
             <CheckCircle className="size-5" />
           </div>
-          <span className="text-lg font-bold">Чисто Задачи</span>
+          <span className="text-lg font-bold hidden sm:inline">Чисто Задачи</span>
         </div>
         <div className="flex items-center gap-2">
           <ThemeToggle />
-          <div className="flex items-center gap-3">
-            <Avatar className="size-8">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <Avatar className="size-7 sm:size-8">
               <AvatarImage src={displayAvatar} />
-              <AvatarFallback className="text-xs">{initials}</AvatarFallback>
+              <AvatarFallback className="text-[10px] sm:text-xs">{initials}</AvatarFallback>
             </Avatar>
-            <div className="hidden flex-col text-left sm:flex">
+            <div className="hidden md:flex flex-col text-left">
               <span className="text-sm font-medium">{displayName}</span>
               <span className="text-xs text-muted-foreground">{displayEmail}</span>
             </div>
           </div>
-          <Button variant="outline" size="sm" onClick={() => window.location.href = "https://id.exesfull.com/oauth/logout/"}>
+          <Button variant="outline" size="sm" className="hidden sm:flex" onClick={() => window.location.href = "https://id.exesfull.com/oauth/logout/"}>
             <LogOut className="mr-2 size-4" />
             Выйти
+          </Button>
+          <Button variant="outline" size="icon" className="sm:hidden" onClick={() => window.location.href = "https://id.exesfull.com/oauth/logout/"}>
+            <LogOut className="size-4" />
           </Button>
         </div>
       </header>
@@ -124,16 +132,16 @@ export function TeamsPage() {
       <TopNav />
 
       {/* Main */}
-      <main className="flex flex-1 items-start justify-center p-6">
+      <main className="flex flex-1 items-start justify-center p-4 sm:p-6">
         <div className="w-full max-w-2xl">
-          <div className="mb-6 flex items-end justify-between">
+          <div className="mb-4 sm:mb-6 flex flex-col sm:flex-row items-start sm:items-end justify-between gap-3">
             <div>
-              <h1 className="text-3xl font-bold">Мои команды</h1>
-              <p className="mt-1 text-muted-foreground">
+              <h1 className="text-2xl sm:text-3xl font-bold">Мои команды</h1>
+              <p className="mt-1 text-sm text-muted-foreground">
                 {loading ? "Загрузка..." : `У вас ${teams.length} ${teams.length === 1 ? "команда" : teams.length < 5 ? "команды" : "команд"}`}
               </p>
             </div>
-            <div className="w-48">
+            <div className="w-full sm:w-48">
               <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortBy)}>
                 <SelectTrigger>
                   <SelectValue placeholder="Сортировка" />
@@ -199,14 +207,16 @@ export function TeamsPage() {
           </div>
 
           {/* Bottom buttons */}
-          <div className="mt-6 flex gap-3">
+          <div className="mt-4 sm:mt-6 flex flex-col sm:flex-row gap-3">
             <Button className="flex-1" onClick={() => {}}>
               <Plus className="mr-2 size-4" />
-              Создать команду
+              <span className="hidden sm:inline">Создать команду</span>
+              <span className="sm:hidden">Создать</span>
             </Button>
             <Button variant="outline" className="flex-1" onClick={() => {}}>
               <Archive className="mr-2 size-4" />
-              Архивные команды
+              <span className="hidden sm:inline">Архивные команды</span>
+              <span className="sm:hidden">Архив</span>
             </Button>
           </div>
         </div>

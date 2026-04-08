@@ -1,8 +1,13 @@
+import { useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Link } from "react-router-dom"
 import { CheckCircle, ArrowRight, Zap, Users, Calendar, Link2 } from "lucide-react"
 
 export function LandingPage() {
+  useEffect(() => {
+    document.title = "Чисто Задачи"
+  }, [])
+
   return (
     <div className="flex min-h-svh flex-col">
       {/* Header */}

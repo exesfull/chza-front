@@ -4,6 +4,9 @@ import { TeamLayout } from '@/components/layouts/team-layout'
 import { LandingPage } from '@/pages/landing'
 import { TeamsPage } from '@/pages/teams-select'
 import { TeamDashboardPage } from '@/pages/team-dashboard'
+import { ProjectsPage } from '@/pages/projects'
+import { ProjectPage } from '@/pages/project-detail'
+import { ProjectSettingsPage } from '@/pages/project-settings'
 import { TasksPage } from '@/pages/tasks'
 import { TaskBoardPage } from '@/pages/task-board'
 import { LinksPage } from '@/pages/links'
@@ -53,6 +56,18 @@ export const router = createBrowserRouter([
       {
         path: 'tasks/:listId',
         element: <TaskBoardPage />,
+      },
+      {
+        path: 'projects',
+        element: <ProjectsPage />,
+      },
+      {
+        path: 'projects/:projectId',
+        element: <ProjectPage />,
+      },
+      {
+        path: 'projects/:projectId/settings',
+        element: <ProjectSettingsPage />,
       },
       {
         path: 'links',

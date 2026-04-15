@@ -5,6 +5,7 @@ import type { LucideIcon } from "lucide-react"
 
 import {
   LayoutDashboard,
+  FolderKanban,
   ListTodo,
   Link2,
   CalendarDays,
@@ -41,6 +42,11 @@ const navMainBase: NavItem[] = [
     title: "Главная",
     url: ".",
     icon: LayoutDashboard,
+  },
+  {
+    title: "Проекты",
+    url: "projects",
+    icon: FolderKanban,
   },
   {
     title: "Задачи",

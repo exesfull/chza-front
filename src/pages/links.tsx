@@ -347,13 +347,13 @@ export function LinksPage() {
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {filteredLinks.map((link) => (
           <Card key={link.id} className="group relative overflow-hidden transition-all hover:shadow-md">
-            <div className="flex flex-col gap-2 p-3">
+            <div className="flex flex-col gap-1.5 p-2.5">
               {/* Header: Title + Three-dot menu */}
-              <div className="flex items-start justify-between gap-2">
+              <div className="flex items-center justify-between gap-2">
                 <h3 className="text-sm font-semibold truncate">{link.title}</h3>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon" className="size-7 shrink-0 -mt-1 -mr-1">
+                    <Button variant="ghost" size="icon" className="size-7 shrink-0">
                       <MoreHorizontal className="size-3.5" />
                     </Button>
                   </DropdownMenuTrigger>
@@ -424,7 +424,7 @@ export function LinksPage() {
 
               {/* Tags at the bottom */}
               {link.tags.length > 0 && (
-                <div className="flex flex-wrap gap-1 pt-1">
+                <div className="flex flex-wrap gap-1">
                   {link.tags.map((tagId) => {
                     const tag = tags.find((t) => t.id === tagId)
                     if (!tag) return null

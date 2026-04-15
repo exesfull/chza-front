@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useCallback, useMemo } from "react"
 import {
   Plus,
   X,
@@ -21,26 +21,23 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import { cn } from "@/lib/utils"
 
 type WidgetType = "tasks" | "calendar" | "links" | "notes" | "stats" | "members"
-type WidgetSize = "1x1" | "1x2" | "2x1" | "2x2" | "1x3" | "3x1" | "2x3" | "3x2"
 
 interface Widget {
   id: string
   type: WidgetType
   title: string
-  size: WidgetSize
-  col: number
-  row: number
+  w: number
+  h: number
+  x: number
+  y: number
 }
+
+const COLS = 6
+const CELL_SIZE = 180
+const GAP = 16
 
 const widgetTypes: { type: WidgetType; title: string; icon: React.ComponentType<{ className?: string }>; color: string }[] = [
   { type: "tasks", title: "Список задач", icon: ListTodo, color: "bg-blue-500" },
@@ -51,31 +48,22 @@ const widgetTypes: { type: WidgetType; title: string; icon: React.ComponentType<
   { type: "members", title: "Участники", icon: Users, color: "bg-orange-500" },
 ]
 
-const sizeOptions: { value: WidgetSize; label: string }[] = [
-  { value: "1x1", label: "1 × 1" },
-  { value: "2x1", label: "2 × 1" },
-  { value: "1x2", label: "1 × 2" },
-  { value: "2x2", label: "2 × 2" },
-  { value: "3x1", label: "3 × 1" },
-  { value: "1x3", label: "1 × 3" },
-  { value: "3x2", label: "3 × 2" },
-  { value: "2x3", label: "2 × 3" },
-]
+function loadWidgets(): Widget[] {
+  try {
+    const saved = localStorage.getItem("dashboard_widgets")
+    if (saved) return JSON.parse(saved)
+  } catch {}
+  return [
+    { id: "1", type: "tasks", title: "Мои задачи", w: 2, h: 2, x: 0, y: 0 },
+    { id: "2", type: "calendar", title: "Календарь", w: 1, h: 2, x: 2, y: 0 },
+    { id: "3", type: "stats", title: "Статистика", w: 3, h: 1, x: 0, y: 2 },
+    { id: "4", type: "links", title: "Ссылки", w: 1, h: 1, x: 3, y: 2 },
+    { id: "5", type: "members", title: "Участники", w: 2, h: 1, x: 0, y: 3 },
+  ]
+}
 
-const initialWidgets: Widget[] = [
-  { id: "1", type: "tasks", title: "Мои задачи", size: "2x2", col: 0, row: 0 },
-  { id: "2", type: "calendar", title: "Календарь", size: "1x2", col: 2, row: 0 },
-  { id: "3", type: "stats", title: "Статистика", size: "3x1", col: 0, row: 2 },
-  { id: "4", type: "links", title: "Ссылки", size: "1x1", col: 3, row: 2 },
-  { id: "5", type: "members", title: "Участники", size: "2x1", col: 0, row: 3 },
-]
-
-function getGridStyle(size: WidgetSize): React.CSSProperties {
-  const [w, h] = size.split("x").map(Number)
-  return {
-    gridColumn: `span ${w}`,
-    gridRow: `span ${h}`,
-  }
+function saveWidgets(widgets: Widget[]) {
+  localStorage.setItem("dashboard_widgets", JSON.stringify(widgets))
 }
 
 function getWidgetColor(type: WidgetType): string {
@@ -88,103 +76,155 @@ function getWidgetIcon(type: WidgetType): React.ComponentType<{ className?: stri
   return wt?.icon || LayoutGrid
 }
 
+function collides(a: Widget, others: Widget[]): boolean {
+  for (const b of others) {
+    if (a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y) {
+      return true
+    }
+  }
+  return false
+}
+
+function compactGrid(widgets: Widget[]): Widget[] {
+  const sorted = [...widgets].sort((a, b) => a.y - b.y || a.x - b.x)
+  const result: Widget[] = []
+  for (const w of sorted) {
+    let newY = w.y
+    while (newY > 0 && !collides({ ...w, y: newY - 1 }, result)) {
+      newY--
+    }
+    result.push({ ...w, y: newY })
+  }
+  return result
+}
+
 export function TeamDashboardPage() {
-  const [widgets, setWidgets] = useState<Widget[]>(initialWidgets)
+  const [widgets, setWidgets] = useState<Widget[]>(loadWidgets)
   const [editMode, setEditMode] = useState(false)
   const [addOpen, setAddOpen] = useState(false)
   const [selectedType, setSelectedType] = useState<WidgetType>("tasks")
-  const [selectedSize, setSelectedSize] = useState<WidgetSize>("2x1")
   const [widgetTitle, setWidgetTitle] = useState("")
 
-  // Drag state
-  const [draggedId, setDraggedId] = useState<string | null>(null)
-  const [dragOverId, setDragOverId] = useState<string | null>(null)
-  const dragStartPos = useRef<{ x: number; y: number } | null>(null)
+  const [dragging, setDragging] = useState<Widget | null>(null)
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 })
+  const [previewRect, setPreviewRect] = useState<{ x: number; y: number } | null>(null)
+  const [resizing, setResizing] = useState<{ id: string; startX: number; startY: number; startW: number; startH: number } | null>(null)
+
+  const gridRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     document.title = "Чисто Задачи"
   }, [])
 
+  useEffect(() => {
+    saveWidgets(widgets)
+  }, [widgets])
+
   const handleAddWidget = () => {
-    const maxRow = widgets.length > 0 ? Math.max(...widgets.map((w) => w.row + parseInt(w.size.split("x")[1]))) : 0
-    const maxCol = widgets.length > 0 ? Math.max(...widgets.map((w) => w.col + parseInt(w.size.split("x")[0]))) : 0
-    const [w] = selectedSize.split("x").map(Number)
+    let x = 0, y = 0
+    const w = 2, h = 2
+    while (collides({ id: "", type: "tasks", title: "", w, h, x, y }, widgets)) {
+      x++
+      if (x + w > COLS) { x = 0; y++ }
+    }
     const newWidget: Widget = {
       id: Date.now().toString(),
       type: selectedType,
       title: widgetTitle || widgetTypes.find((wt) => wt.type === selectedType)?.title || "Виджет",
-      size: selectedSize,
-      col: maxCol + w > 6 ? 0 : maxCol,
-      row: maxCol + w > 6 ? maxRow : 0,
+      w, h, x, y,
     }
-    setWidgets((prev) => [...prev, newWidget])
+    setWidgets((prev) => compactGrid([...prev, newWidget]))
     setAddOpen(false)
     setWidgetTitle("")
   }
 
   const handleRemoveWidget = (id: string) => {
-    setWidgets((prev) => prev.filter((w) => w.id !== id))
+    setWidgets((prev) => compactGrid(prev.filter((w) => w.id !== id)))
   }
 
-  const handleDragStart = (e: React.DragEvent, id: string) => {
+  const handleDragStart = useCallback((e: React.MouseEvent, widget: Widget) => {
     if (!editMode) return
-    setDraggedId(id)
-    dragStartPos.current = { x: e.clientX, y: e.clientY }
-    e.dataTransfer.effectAllowed = "move"
-  }
-
-  const handleDragOver = (e: React.DragEvent, id: string) => {
     e.preventDefault()
-    if (editMode && draggedId && draggedId !== id) {
-      setDragOverId(id)
-    }
-  }
+    const rect = gridRef.current?.getBoundingClientRect()
+    if (!rect) return
+    setDragging({ ...widget })
+    setDragOffset({
+      x: e.clientX - rect.left - widget.x * (CELL_SIZE + GAP),
+      y: e.clientY - rect.top - widget.y * (CELL_SIZE + GAP),
+    })
+    setPreviewRect({ x: widget.x, y: widget.y })
+  }, [editMode])
 
-  const handleDrop = (e: React.DragEvent, targetId: string) => {
-    e.preventDefault()
-    if (!editMode || !draggedId || draggedId === targetId) {
-      setDraggedId(null)
-      setDragOverId(null)
+  const handleMouseMove = useCallback((e: MouseEvent) => {
+    if (resizing && gridRef.current) {
+      const dx = e.clientX - resizing.startX
+      const dy = e.clientY - resizing.startY
+      const newW = Math.max(1, Math.min(COLS, resizing.startW + Math.round(dx / (CELL_SIZE + GAP))))
+      const newH = Math.max(1, resizing.startH + Math.round(dy / (CELL_SIZE + GAP)))
+      setWidgets((prev) => prev.map((w) => w.id === resizing.id ? { ...w, w: newW, h: newH } : w))
       return
     }
 
-    setWidgets((prev) => {
-      const newWidgets = [...prev]
-      const draggedIdx = newWidgets.findIndex((w) => w.id === draggedId)
-      const targetIdx = newWidgets.findIndex((w) => w.id === targetId)
-      if (draggedIdx === -1 || targetIdx === -1) return prev
+    if (dragging && gridRef.current) {
+      const rect = gridRef.current.getBoundingClientRect()
+      const px = e.clientX - rect.left - dragOffset.x
+      const py = e.clientY - rect.top - dragOffset.y
+      const gx = Math.round(px / (CELL_SIZE + GAP))
+      const gy = Math.round(py / (CELL_SIZE + GAP))
+      const clampedX = Math.max(0, Math.min(COLS - dragging.w, gx))
+      const clampedY = Math.max(0, gy)
+      const tempWidget: Widget = { ...dragging, x: clampedX, y: clampedY }
+      const others = widgets.filter((w) => w.id !== dragging.id)
+      if (collides(tempWidget, others)) {
+        setPreviewRect(null)
+      } else {
+        setPreviewRect({ x: clampedX, y: clampedY })
+      }
+    }
+  }, [dragging, dragOffset, resizing, widgets])
 
-      // Swap positions
-      const dragged = { ...newWidgets[draggedIdx] }
-      const target = { ...newWidgets[targetIdx] }
-      newWidgets[draggedIdx] = { ...dragged, col: target.col, row: target.row }
-      newWidgets[targetIdx] = { ...target, col: dragged.col, row: dragged.row }
-      return newWidgets
-    })
-    setDraggedId(null)
-    setDragOverId(null)
-  }
+  const handleMouseUp = useCallback(() => {
+    if (resizing) {
+      setResizing(null)
+      return
+    }
+    if (dragging && previewRect) {
+      const tempWidget: Widget = { ...dragging, x: previewRect.x, y: previewRect.y }
+      const others = widgets.filter((w) => w.id !== dragging.id)
+      if (!collides(tempWidget, others)) {
+        const newWidgets = widgets.map((w) => w.id === dragging.id ? { ...w, x: previewRect.x, y: previewRect.y } : w)
+        setWidgets(compactGrid(newWidgets))
+      }
+    }
+    setDragging(null)
+    setPreviewRect(null)
+  }, [dragging, previewRect, resizing, widgets])
 
-  const handleDragEnd = () => {
-    setDraggedId(null)
-    setDragOverId(null)
+  useEffect(() => {
+    if (dragging || resizing) {
+      window.addEventListener("mousemove", handleMouseMove)
+      window.addEventListener("mouseup", handleMouseUp)
+      return () => {
+        window.removeEventListener("mousemove", handleMouseMove)
+        window.removeEventListener("mouseup", handleMouseUp)
+      }
+    }
+  }, [dragging, resizing, handleMouseMove, handleMouseUp])
+
+  const handleResizeStart = (e: React.MouseEvent, widget: Widget) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setResizing({ id: widget.id, startX: e.clientX, startY: e.clientY, startW: widget.w, startH: widget.h })
   }
 
   const renderWidgetContent = (widget: Widget) => {
     const Icon = getWidgetIcon(widget.type)
     const color = getWidgetColor(widget.type)
-
     return (
-      <div className="flex h-full flex-col">
-        {/* Header */}
+      <div className="flex h-full flex-col relative">
         <div className="flex items-center gap-2 border-b px-3 py-2">
           {editMode && (
-            <div
-              draggable
-              onDragStart={(e) => handleDragStart(e, widget.id)}
-              onDragEnd={handleDragEnd}
-              className="cursor-grab active:cursor-grabbing"
-            >
+            <div className="cursor-grab active:cursor-grabbing" onMouseDown={(e) => handleDragStart(e, widget)}>
               <GripVertical className="size-4 text-muted-foreground" />
             </div>
           )}
@@ -198,38 +238,41 @@ export function TeamDashboardPage() {
             </button>
           )}
         </div>
-        {/* Content */}
         <div className="flex flex-1 items-center justify-center p-4">
           <div className="flex flex-col items-center gap-2 text-muted-foreground">
             <Icon className="size-8 opacity-30" />
             <span className="text-xs">Содержимое виджета</span>
           </div>
         </div>
+        {editMode && (
+          <div className="absolute bottom-1 right-1 size-5 cursor-nwse-resize flex items-center justify-center text-muted-foreground hover:text-foreground rounded bg-background/80"
+            onMouseDown={(e) => handleResizeStart(e, widget)}
+          >
+            <svg width="12" height="12" viewBox="0 0 12 12"><path d="M2 10L10 2M6 10L10 6M2 6L10 -2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
+          </div>
+        )}
       </div>
     )
   }
 
+  const gridHeight = useMemo(() => {
+    const maxH = widgets.length > 0 ? Math.max(...widgets.map((w) => w.y + w.h)) : 1
+    return Math.max(200, maxH * CELL_SIZE + (maxH - 1) * GAP)
+  }, [widgets])
+
   return (
     <div className="flex flex-col gap-4 p-4 lg:p-6">
-      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Чисто Задачи</h1>
           <p className="text-sm text-muted-foreground">Добро пожаловать!</p>
         </div>
-        <div className="flex items-center gap-2">
-          <Button
-            variant={editMode ? "default" : "outline"}
-            size="sm"
-            onClick={() => setEditMode(!editMode)}
-          >
-            <LayoutGrid className="mr-2 size-4" />
-            {editMode ? "Готово" : "Изменить виджеты"}
-          </Button>
-        </div>
+        <Button variant={editMode ? "default" : "outline"} size="sm" onClick={() => setEditMode(!editMode)}>
+          <LayoutGrid className="mr-2 size-4" />
+          {editMode ? "Готово" : "Изменить виджеты"}
+        </Button>
       </div>
 
-      {/* Add widget button */}
       {editMode && (
         <Button variant="outline" size="sm" onClick={() => setAddOpen(true)} className="w-fit">
           <Plus className="mr-2 size-4" />
@@ -237,33 +280,42 @@ export function TeamDashboardPage() {
         </Button>
       )}
 
-      {/* Widgets grid - 6 columns */}
-      <div
-        className="grid gap-4"
-        style={{ gridTemplateColumns: "repeat(6, minmax(0, 1fr))", gridAutoRows: "minmax(180px, auto)" }}
-      >
-        {widgets.map((widget) => (
-          <div
-            key={widget.id}
-            className={cn(
-              "flex flex-col overflow-hidden rounded-xl border bg-card transition-all",
-              dragOverId === widget.id && "ring-2 ring-primary ring-offset-2",
-              draggedId === widget.id && "opacity-40"
-            )}
-            style={getGridStyle(widget.size)}
-            draggable={editMode}
-            onDragOver={(e) => handleDragOver(e, widget.id)}
-            onDrop={(e) => handleDrop(e, widget.id)}
-          >
-            {renderWidgetContent(widget)}
-          </div>
-        ))}
+      <div ref={gridRef} className="relative" style={{ width: COLS * CELL_SIZE + (COLS - 1) * GAP, minHeight: gridHeight }}>
+        {widgets.map((widget) => {
+          const isDragging = dragging?.id === widget.id
+          return (
+            <div
+              key={widget.id}
+              className={cn(
+                "absolute overflow-hidden rounded-xl border bg-card transition-shadow",
+                isDragging ? "opacity-30 z-0" : "z-10"
+              )}
+              style={{
+                left: widget.x * (CELL_SIZE + GAP),
+                top: widget.y * (CELL_SIZE + GAP),
+                width: widget.w * CELL_SIZE + (widget.w - 1) * GAP,
+                height: widget.h * CELL_SIZE + (widget.h - 1) * GAP,
+              }}
+            >
+              {renderWidgetContent(widget)}
+            </div>
+          )
+        })}
 
-        {/* Empty state */}
-        {widgets.length === 0 && (
+        {dragging && previewRect && (
           <div
-            className="col-span-6 flex flex-col items-center justify-center rounded-xl border-2 border-dashed p-12 text-center text-muted-foreground"
-          >
+            className="absolute rounded-xl border-2 border-dashed border-primary bg-primary/5 z-20 pointer-events-none"
+            style={{
+              left: previewRect.x * (CELL_SIZE + GAP),
+              top: previewRect.y * (CELL_SIZE + GAP),
+              width: dragging.w * CELL_SIZE + (dragging.w - 1) * GAP,
+              height: dragging.h * CELL_SIZE + (dragging.h - 1) * GAP,
+            }}
+          />
+        )}
+
+        {widgets.length === 0 && (
+          <div className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed p-12 text-center text-muted-foreground">
             <LayoutGrid className="mb-4 size-12 opacity-30" />
             <h3 className="text-lg font-medium">Нет виджетов</h3>
             <p className="text-sm">Нажмите "Изменить виджеты" чтобы добавить первый виджет</p>
@@ -271,15 +323,13 @@ export function TeamDashboardPage() {
         )}
       </div>
 
-      {/* Add widget dialog */}
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
         <DialogContent className="sm:max-w-[400px]">
           <DialogHeader>
             <DialogTitle>Добавить виджет</DialogTitle>
-            <DialogDescription>Выберите тип и размер виджета</DialogDescription>
+            <DialogDescription>Выберите тип виджета</DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-4 py-2">
-            {/* Widget type */}
             <div className="flex flex-col gap-2">
               <label className="text-sm font-medium">Тип</label>
               <div className="grid grid-cols-3 gap-2">
@@ -298,24 +348,9 @@ export function TeamDashboardPage() {
                 ))}
               </div>
             </div>
-            {/* Title */}
             <div className="flex flex-col gap-2">
               <label className="text-sm font-medium">Название</label>
               <Input value={widgetTitle} onChange={(e) => setWidgetTitle(e.target.value)} placeholder="Название виджета" />
-            </div>
-            {/* Size */}
-            <div className="flex flex-col gap-2">
-              <label className="text-sm font-medium">Размер</label>
-              <Select value={selectedSize} onValueChange={(v) => setSelectedSize(v as WidgetSize)}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {sizeOptions.map((opt) => (
-                    <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
             </div>
           </div>
           <DialogFooter>

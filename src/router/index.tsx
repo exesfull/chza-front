@@ -17,6 +17,7 @@ import { ManagementGeneralPage } from '@/pages/management-general'
 import { ManagementMembersPage } from '@/pages/management-members'
 import { NotFoundPage } from '@/pages/not-found'
 import { ForbiddenPage } from '@/pages/forbidden'
+import { LoginPage } from '@/pages/login'
 
 // Update document title on route change
 function TitleUpdater() {
@@ -29,6 +30,10 @@ function TitleUpdater() {
 }
 
 export const router = createBrowserRouter([
+  {
+    path: '/login',
+    element: <><TitleUpdater /><LoginPage /></>,
+  },
   {
     path: '/',
     element: <><TitleUpdater /><LandingPage /></>,

@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState, useMemo, useCallback, type ReactNode } from "react"
 import { api } from "@/lib/api"
+import { useAuth } from "@/hooks/use-auth"
 
 export interface TeamInfo {
   id: string
@@ -42,8 +43,13 @@ export function TeamsProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true)
   const [activeTeam, setActiveTeam] = useState<TeamInfo | null>(null)
   const [teamMembership, setTeamMembership] = useState<TeamMembership | null>(null)
+  const { isLoggedIn } = useAuth()
 
   const refreshTeams = async () => {
+    if (!isLoggedIn) {
+      setLoading(false)
+      return
+    }
     try {
       const { data } = await api.get("/user/myTeams/")
       if (data.status && Array.isArray(data.data)) {
@@ -61,6 +67,9 @@ export function TeamsProvider({ children }: { children: ReactNode }) {
   }
 
   const checkTeamMembership = useCallback(async (teamLogin: string) => {
+    if (!isLoggedIn) {
+      return
+    }
     try {
       const { data } = await api.get(`/main/team/checkTeamMembership/?team_login=${teamLogin}`)
       if (data.status && data.data) {
@@ -69,11 +78,15 @@ export function TeamsProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       console.error("Failed to check team membership:", error)
     }
-  }, [])
+  }, [isLoggedIn])
 
   useEffect(() => {
-    refreshTeams()
-  }, [])
+    if (isLoggedIn) {
+      refreshTeams()
+    } else {
+      setLoading(false)
+    }
+  }, [isLoggedIn])
 
   const isAdmin = teamMembership?.membership?.is_admin ?? false
 

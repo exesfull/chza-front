@@ -1,8 +1,10 @@
 {
   "permissions": {
     "allow": [
-      "Bash(npm run *)"
+      "Bash(npm run *)",
+      "Bash(node *)",
+      "Bash(nvm *)"
     ]
   },
-  "$version": 3
+  "$version": 4
 }

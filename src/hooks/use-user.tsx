@@ -21,7 +21,7 @@ interface UserContextType {
 const UserContext = createContext<UserContextType | undefined>(undefined)
 
 export function UserProvider({ children }: { children: ReactNode }) {
-  const { user: storedUser, loading: storedLoading, refreshUser: storedRefreshUser } = useUserInternal()
+  const { loading: storedLoading } = useUserInternal()
   const { isLoggedIn } = useAuth()
   const [user, setUser] = useState<UserProfile | null>(null)
   const [loading, setLoading] = useState(storedLoading)

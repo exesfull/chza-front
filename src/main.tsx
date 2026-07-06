@@ -1,6 +1,5 @@
 import { StrictMode } from "react"
 import { createRoot } from "react-dom/client"
-import { BrowserRouter } from "react-router-dom"
 
 import "./index.css"
 import App from "./App.tsx"
@@ -11,16 +10,14 @@ import { AuthProvider } from "@/hooks/use-auth.tsx"
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <BrowserRouter>
-      <ThemeProvider>
-        <AuthProvider>
-          <UserProvider>
-            <TeamsProvider>
-              <App />
-            </TeamsProvider>
-          </UserProvider>
-        </AuthProvider>
-      </ThemeProvider>
-    </BrowserRouter>
+    <ThemeProvider>
+      <AuthProvider>
+        <UserProvider>
+          <TeamsProvider>
+            <App />
+          </TeamsProvider>
+        </UserProvider>
+      </AuthProvider>
+    </ThemeProvider>
   </StrictMode>
 )

@@ -1,4 +1,5 @@
 import axios from "axios"
+import { getCurrentPath, isPublicPath } from "@/lib/auth-redirect"
 
 // During development, use relative URL (proxied by Vite)
 // During production, use the full URL
@@ -17,13 +18,13 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      // Save current URL to localStorage
-      const currentPath = window.location.pathname + window.location.search
-      localStorage.setItem("auth_redirect_url", currentPath)
-      // Redirect to login page
-      window.location.href = "/login"
+      const pathname = window.location.pathname
+
+      if (!isPublicPath(pathname)) {
+        localStorage.setItem("auth_redirect_url", getCurrentPath())
+        window.location.replace("/login")
+      }
     }
     return Promise.reject(error)
   }
 )
-

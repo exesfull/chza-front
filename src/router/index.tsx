@@ -1,4 +1,4 @@
-import { createBrowserRouter, RouterProvider, useLocation } from 'react-router-dom'
+import { createBrowserRouter, Navigate, RouterProvider, useLocation, type RouteObject } from 'react-router-dom'
 import * as React from 'react'
 import { TeamLayout } from '@/components/layouts/team-layout'
 import { LandingPage } from '@/pages/landing'
@@ -17,7 +17,7 @@ import { ManagementGeneralPage } from '@/pages/management-general'
 import { ManagementMembersPage } from '@/pages/management-members'
 import { NotFoundPage } from '@/pages/not-found'
 import { ForbiddenPage } from '@/pages/forbidden'
-import { LoginPage } from '@/pages/login'
+import { useUser } from '@/hooks/use-user'
 
 // Update document title on route change
 function TitleUpdater() {
@@ -29,11 +29,21 @@ function TitleUpdater() {
   return null
 }
 
-export const router = createBrowserRouter([
-  {
-    path: '/login',
-    element: <><TitleUpdater /><LoginPage /></>,
-  },
+function ProtectedRoute({ children }: { children: React.ReactNode }) {
+  const { user, loading } = useUser()
+
+  if (loading) {
+    return <LandingPage />
+  }
+
+  if (!user) {
+    return <Navigate to="/" replace />
+  }
+
+  return <>{children}</>
+}
+
+const routes: RouteObject[] = [
   {
     path: '/',
     element: <><TitleUpdater /><LandingPage /></>,
@@ -44,11 +54,19 @@ export const router = createBrowserRouter([
   },
   {
     path: 'teams',
-    element: <TeamsPage />,
+    element: (
+      <ProtectedRoute>
+        <TeamsPage />
+      </ProtectedRoute>
+    ),
   },
   {
     path: 'teams/:teamLogin',
-    element: <TeamLayout />,
+    element: (
+      <ProtectedRoute>
+        <TeamLayout />
+      </ProtectedRoute>
+    ),
     children: [
       {
         index: true,
@@ -94,17 +112,29 @@ export const router = createBrowserRouter([
   },
   {
     path: 'settings',
-    element: <SettingsPage />,
+    element: (
+      <ProtectedRoute>
+        <SettingsPage />
+      </ProtectedRoute>
+    ),
   },
   {
     path: 'help',
-    element: <HelpPage />,
+    element: (
+      <ProtectedRoute>
+        <HelpPage />
+      </ProtectedRoute>
+    ),
   },
   {
     path: '*',
     element: <NotFoundPage />,
   },
-])
+]
+
+export const router = createBrowserRouter(routes, {
+  basename: import.meta.env.BASE_URL,
+})
 
 export default function AppRouter() {
   return <RouterProvider router={router} />

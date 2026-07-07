@@ -18,6 +18,7 @@ import { ManagementMembersPage } from '@/pages/management-members'
 import { NotFoundPage } from '@/pages/not-found'
 import { ForbiddenPage } from '@/pages/forbidden'
 import { useUser } from '@/hooks/use-user'
+import { LoaderCircle } from "lucide-react"
 
 // Update document title on route change
 function TitleUpdater() {
@@ -33,7 +34,11 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useUser()
 
   if (loading) {
-    return <LandingPage />
+    return (
+      <div className="flex min-h-svh items-center justify-center bg-background px-6">
+        <LoaderCircle className="size-10 animate-spin text-primary" />
+      </div>
+    )
   }
 
   if (!user) {

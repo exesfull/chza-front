@@ -1,7 +1,6 @@
 import { useEffect, useRef } from "react"
 import { LoaderCircle } from "lucide-react"
 import { useUser } from "@/hooks/use-user"
-import { buildSsoStartUrl, clearSsoStateCookie, generateSsoState, setSsoStateCookie } from "@/lib/sso"
 
 export function LandingPage() {
   const { user, loading } = useUser()
@@ -22,10 +21,24 @@ export function LandingPage() {
     }
 
     startedRef.current = true
-    clearSsoStateCookie()
-    const state = generateSsoState()
-    setSsoStateCookie(state)
-    window.location.replace(buildSsoStartUrl(state))
+
+    fetch("/api/esm/eid/start/", {
+      method: "GET",
+      credentials: "include",
+    })
+      .then((response) => response.json())
+      .then((payload) => {
+        const url = payload?.data?.url
+        if (payload?.status && url) {
+          window.location.replace(url)
+          return
+        }
+
+        throw new Error(payload?.error || "redirect_url_missing")
+      })
+      .catch((error) => {
+        console.error("Failed to start SSO:", error)
+      })
   }, [loading, user])
 
   return (

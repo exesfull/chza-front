@@ -112,7 +112,7 @@ export function NavUser() {
                 <ArrowLeftRight />
                 Сменить аккаунт
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => window.location.href = "https://id.exesfull.com/oauth/logout/"}>
+              <DropdownMenuItem onClick={() => window.location.href = buildLocalLogoutUrl()}>
                 <LogOut />
                 Выйти
               </DropdownMenuItem>

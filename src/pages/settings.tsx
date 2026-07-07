@@ -6,6 +6,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { cn } from "@/lib/utils"
+import { buildLocalLogoutUrl } from "@/lib/sso"
 
 const navItems = [
   {
@@ -95,10 +96,10 @@ export function SettingsPage() {
               <span className="text-xs text-muted-foreground">{displayEmail}</span>
             </div>
           </div>
-          <Button variant="outline" size="sm" className="hidden sm:inline-flex" onClick={() => window.location.href = "https://id.exesfull.com/oauth/logout/"}>
+          <Button variant="outline" size="sm" className="hidden sm:inline-flex" onClick={() => window.location.href = buildLocalLogoutUrl()}>
             Выйти
           </Button>
-          <Button variant="outline" size="icon" className="sm:hidden" onClick={() => window.location.href = "https://id.exesfull.com/oauth/logout/"}>
+          <Button variant="outline" size="icon" className="sm:hidden" onClick={() => window.location.href = buildLocalLogoutUrl()}>
             <LogOut className="size-4" />
           </Button>
         </div>

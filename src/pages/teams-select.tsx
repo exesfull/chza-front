@@ -19,6 +19,7 @@ import { useUser } from "@/hooks/use-user"
 import { useTeams, sortTeams, type SortBy } from "@/hooks/use-teams"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { cn } from "@/lib/utils"
+import { buildLocalLogoutUrl } from "@/lib/sso"
 
 const navItems = [
   {
@@ -118,11 +119,11 @@ export function TeamsPage() {
               <span className="text-xs text-muted-foreground">{displayEmail}</span>
             </div>
           </div>
-          <Button variant="outline" size="sm" className="hidden sm:flex" onClick={() => window.location.href = "https://id.exesfull.com/oauth/logout/"}>
+          <Button variant="outline" size="sm" className="hidden sm:flex" onClick={() => window.location.href = buildLocalLogoutUrl()}>
             <LogOut className="mr-2 size-4" />
             Выйти
           </Button>
-          <Button variant="outline" size="icon" className="sm:hidden" onClick={() => window.location.href = "https://id.exesfull.com/oauth/logout/"}>
+          <Button variant="outline" size="icon" className="sm:hidden" onClick={() => window.location.href = buildLocalLogoutUrl()}>
             <LogOut className="size-4" />
           </Button>
         </div>

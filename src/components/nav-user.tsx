@@ -30,6 +30,7 @@ import {
 } from "@/components/ui/sidebar"
 import { useUser } from "@/hooks/use-user"
 import { Skeleton } from "@/components/ui/skeleton"
+import { buildLocalLogoutUrl } from "@/lib/sso"
 
 export function NavUser() {
   const { isMobile } = useSidebar()

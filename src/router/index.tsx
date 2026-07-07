@@ -24,8 +24,9 @@ import { LoaderCircle } from "lucide-react"
 function TitleUpdater() {
   const location = useLocation()
   React.useEffect(() => {
-    // Reset to default title, specific pages will override it
-    document.title = 'Чисто Задачи'
+    if (location.pathname !== "/") {
+      document.title = 'Чисто Задачи'
+    }
   }, [location.pathname])
   return null
 }

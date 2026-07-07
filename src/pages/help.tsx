@@ -1,12 +1,9 @@
 import { Link, useLocation } from "react-router-dom"
 import { useEffect } from "react"
-import { Settings, HelpCircle, CheckCircle, Users, LogOut } from "lucide-react"
-import { useUser } from "@/hooks/use-user"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Button } from "@/components/ui/button"
+import { Settings, HelpCircle, CheckCircle, Users } from "lucide-react"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { cn } from "@/lib/utils"
-import { buildLocalLogoutUrl } from "@/lib/sso"
+import { UserMenu } from "@/components/user-menu"
 
 const navItems = [
   {
@@ -59,20 +56,9 @@ function TopNav() {
 }
 
 export function HelpPage() {
-  const { user } = useUser()
-
   useEffect(() => {
     document.title = "Помощь"
   }, [])
-
-  const displayName = user
-    ? `${user.last_name} ${user.first_name}`
-    : "Пользователь"
-  const displayEmail = user?.email || ""
-  const displayAvatar = user?.img_url || ""
-  const initials = user
-    ? `${user.last_name?.[0] ?? ""}${user.first_name?.[0] ?? ""}`.toUpperCase()
-    : "П"
 
   return (
     <div className="flex min-h-svh flex-col">
@@ -86,22 +72,7 @@ export function HelpPage() {
         </div>
         <div className="flex items-center gap-2">
           <ThemeToggle />
-          <div className="flex items-center gap-2 sm:gap-3">
-            <Avatar className="size-7 sm:size-8">
-              <AvatarImage src={displayAvatar} />
-              <AvatarFallback className="text-[10px] sm:text-xs">{initials}</AvatarFallback>
-            </Avatar>
-            <div className="hidden md:flex flex-col text-left">
-              <span className="text-sm font-medium">{displayName}</span>
-              <span className="text-xs text-muted-foreground">{displayEmail}</span>
-            </div>
-          </div>
-          <Button variant="outline" size="sm" className="hidden sm:inline-flex" onClick={() => window.location.href = buildLocalLogoutUrl()}>
-            Выйти
-          </Button>
-          <Button variant="outline" size="icon" className="sm:hidden" onClick={() => window.location.href = buildLocalLogoutUrl()}>
-            <LogOut className="size-4" />
-          </Button>
+          <UserMenu />
         </div>
       </header>
 

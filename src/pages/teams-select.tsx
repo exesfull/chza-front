@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react"
 import { useNavigate, Link, useLocation } from "react-router-dom"
 import { Button } from "@/components/ui/button"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import {
   Card,
   CardContent,
@@ -14,12 +13,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { CheckCircle, LogOut, Plus, Archive, Users, Settings, HelpCircle } from "lucide-react"
-import { useUser } from "@/hooks/use-user"
+import { CheckCircle, Plus, Archive, Users, Settings, HelpCircle } from "lucide-react"
 import { useTeams, sortTeams, type SortBy } from "@/hooks/use-teams"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { cn } from "@/lib/utils"
-import { buildLocalLogoutUrl } from "@/lib/sso"
+import { UserMenu } from "@/components/user-menu"
 
 const navItems = [
   {
@@ -72,7 +70,6 @@ function TopNav() {
 }
 
 export function TeamsPage() {
-  const { user } = useUser()
   const { teams, loading, activeTeam } = useTeams()
   const navigate = useNavigate()
   const [sortBy, setSortBy] = useState<SortBy>("name_asc")
@@ -81,15 +78,6 @@ export function TeamsPage() {
     if (activeTeam) document.title = activeTeam.name;
     else document.title = "Мои команды"
   }, [activeTeam])
-
-  const displayName = user
-    ? `${user.last_name} ${user.first_name}`
-    : "Пользователь"
-  const displayEmail = user?.email || ""
-  const displayAvatar = user?.img_url || ""
-  const initials = user
-    ? `${user.last_name?.[0] ?? ""}${user.first_name?.[0] ?? ""}`.toUpperCase()
-    : "П"
 
   const sortedTeams = sortTeams(teams, sortBy)
 
@@ -109,23 +97,7 @@ export function TeamsPage() {
         </div>
         <div className="flex items-center gap-2">
           <ThemeToggle />
-          <div className="flex items-center gap-2 sm:gap-3">
-            <Avatar className="size-7 sm:size-8">
-              <AvatarImage src={displayAvatar} />
-              <AvatarFallback className="text-[10px] sm:text-xs">{initials}</AvatarFallback>
-            </Avatar>
-            <div className="hidden md:flex flex-col text-left">
-              <span className="text-sm font-medium">{displayName}</span>
-              <span className="text-xs text-muted-foreground">{displayEmail}</span>
-            </div>
-          </div>
-          <Button variant="outline" size="sm" className="hidden sm:flex" onClick={() => window.location.href = buildLocalLogoutUrl()}>
-            <LogOut className="mr-2 size-4" />
-            Выйти
-          </Button>
-          <Button variant="outline" size="icon" className="sm:hidden" onClick={() => window.location.href = buildLocalLogoutUrl()}>
-            <LogOut className="size-4" />
-          </Button>
+          <UserMenu />
         </div>
       </header>
 

@@ -35,11 +35,6 @@ export function buildLocalLogoutUrl(): string {
   return "/api/esm/eid/logout/"
 }
 
-export function buildSwitchAccountUrl(returnTo = window.location.href): string {
-  const params = new URLSearchParams({
-    return_to: returnTo,
-  })
-
-  return `https://id.exesfull.com/oauth/chageAccount/?${params.toString()}`
+export function buildSwitchAccountUrl(): string {
+  return "/api/esm/eid/switch-account/"
 }
-

@@ -16,7 +16,6 @@ export function LandingPage() {
     }
 
     if (user) {
-      window.location.replace(new URL("teams", window.location.href).toString())
       return
     }
 

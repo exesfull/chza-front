@@ -19,6 +19,10 @@ import { useTeams, sortTeams, type SortBy } from "@/hooks/use-teams"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { cn } from "@/lib/utils"
 import { UserMenu } from "@/components/user-menu"
+import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { api } from "@/lib/api"
 
 const navItems = [
   {
@@ -71,9 +75,15 @@ function TopNav() {
 }
 
 export function TeamsPage() {
-  const { teams, loading, activeTeam } = useTeams()
+  const { teams, loading, activeTeam, refreshTeams } = useTeams()
   const navigate = useNavigate()
   const [sortBy, setSortBy] = useState<SortBy>("name_asc")
+  const [createOpen, setCreateOpen] = useState(false)
+  const [teamName, setTeamName] = useState("")
+  const [teamDesc, setTeamDesc] = useState("")
+  const [teamImg, setTeamImg] = useState("")
+  const [creating, setCreating] = useState(false)
+  const [createError, setCreateError] = useState("")
 
   useEffect(() => {
     if (activeTeam) document.title = activeTeam.name;
@@ -84,6 +94,44 @@ export function TeamsPage() {
 
   const handleSelectTeam = (teamLogin: string) => {
     navigate(`/teams/${teamLogin}`)
+  }
+
+  const handleCreateTeam = async () => {
+    const name = teamName.trim()
+    if (!name) {
+      setCreateError("Название команды обязательно")
+      return
+    }
+
+    setCreating(true)
+    setCreateError("")
+
+    try {
+      const body = new URLSearchParams()
+      body.append("name", name)
+      if (teamDesc.trim()) body.append("description", teamDesc.trim())
+      if (teamImg.trim()) body.append("img_url", teamImg.trim())
+
+      const { data } = await api.post("/main/team/create/", body, {
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      })
+
+      if (!data.status || !data.data?.team) {
+        throw new Error(data?.error || "team_create_failed")
+      }
+
+      await refreshTeams()
+      setCreateOpen(false)
+      setTeamName("")
+      setTeamDesc("")
+      setTeamImg("")
+      navigate(`/teams/${data.data.team.login}`)
+    } catch (createTeamError) {
+      console.error("Failed to create team:", createTeamError)
+      setCreateError("Не удалось создать команду")
+    } finally {
+      setCreating(false)
+    }
   }
 
   return (
@@ -182,7 +230,7 @@ export function TeamsPage() {
 
           {/* Bottom buttons */}
           <div className="mt-4 sm:mt-6 flex flex-col sm:flex-row gap-3">
-            <Button className="flex-1" onClick={() => {}}>
+            <Button className="flex-1" onClick={() => setCreateOpen(true)}>
               <Plus className="mr-2 size-4" />
               <span className="hidden sm:inline">Создать команду</span>
               <span className="sm:hidden">Создать</span>
@@ -200,6 +248,52 @@ export function TeamsPage() {
       <footer className="border-t px-6 py-4 text-center text-sm text-muted-foreground">
         © {new Date().getFullYear()} Чисто Задачи
       </footer>
+
+      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+        <DialogContent className="sm:max-w-[520px]">
+          <DialogHeader>
+            <DialogTitle>Создать команду</DialogTitle>
+            <DialogDescription>Заполните данные новой команды</DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-4 py-2">
+            <div className="flex flex-col gap-2">
+              <label className="text-sm font-medium">Название *</label>
+              <Input
+                placeholder="Название команды"
+                value={teamName}
+                onChange={(e) => setTeamName(e.target.value)}
+                autoFocus
+              />
+            </div>
+            <div className="flex flex-col gap-2">
+              <label className="text-sm font-medium">Описание</label>
+              <Textarea
+                placeholder="Описание команды"
+                value={teamDesc}
+                onChange={(e) => setTeamDesc(e.target.value)}
+                rows={3}
+              />
+            </div>
+            <div className="flex flex-col gap-2">
+              <label className="text-sm font-medium">Обложка</label>
+              <Input
+                placeholder="URL изображения"
+                value={teamImg}
+                onChange={(e) => setTeamImg(e.target.value)}
+              />
+            </div>
+            {createError && <p className="text-sm text-destructive">{createError}</p>}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreateOpen(false)}>
+              Отмена
+            </Button>
+            <Button onClick={handleCreateTeam} disabled={creating || !teamName.trim()}>
+              {creating ? "Создание..." : "Создать"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

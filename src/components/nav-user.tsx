@@ -30,7 +30,7 @@ import {
 } from "@/components/ui/sidebar"
 import { useUser } from "@/hooks/use-user"
 import { Skeleton } from "@/components/ui/skeleton"
-import { buildLocalLogoutUrl } from "@/lib/sso"
+import { buildLocalLogoutUrl, buildSwitchAccountUrl } from "@/lib/sso"
 
 export function NavUser() {
   const { isMobile } = useSidebar()
@@ -109,7 +109,7 @@ export function NavUser() {
                 <Settings />
                 Настройки
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => window.location.href = "https://id.exesfull.com/oauth/chageAccount/"}>
+              <DropdownMenuItem onClick={() => window.location.href = buildSwitchAccountUrl()}>
                 <ArrowLeftRight />
                 Сменить аккаунт
               </DropdownMenuItem>

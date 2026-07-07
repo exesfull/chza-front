@@ -1,239 +1,224 @@
-import { useState, useEffect } from "react"
-import { useParams, Link } from "react-router-dom"
-import {
-  Settings,
-  ChevronRight,
-  Users,
-  Trash2,
-  Save,
-  X,
-  Image as ImageIcon,
-  Archive,
-} from "lucide-react"
+import { useEffect, useState } from "react"
+import { Link, useNavigate, useParams } from "react-router-dom"
+import { Archive, ChevronRight, Image as ImageIcon, Save, Settings, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
-import { Badge } from "@/components/ui/badge"
-import { Checkbox } from "@/components/ui/checkbox"
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog"
-
-const teamMembers = [
-  { id: "1", name: "Алексей Иванов", email: "alexey@example.com" },
-  { id: "2", name: "Мария Петрова", email: "maria@example.com" },
-  { id: "3", name: "Дмитрий Сидоров", email: "dmitry@example.com" },
-  { id: "4", name: "Елена Козлова", email: "elena@example.com" },
-  { id: "5", name: "Иван Смирнов", email: "ivan@example.com" },
-]
-
-const currentMembers = ["1", "2", "3"]
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
+import { useProjects, type ProjectDetail } from "@/hooks/use-projects"
 
 export function ProjectSettingsPage() {
   const { teamLogin, projectId } = useParams()
-  const [projectName, setProjectName] = useState("Разработка сайта")
-  const [projectDesc, setProjectDesc] = useState("Создание корпоративного сайта с нуля")
-  const [imageUrl, setImageUrl] = useState("https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=400&h=200&fit=crop")
-  const [selectedMembers, setSelectedMembers] = useState<string[]>(currentMembers)
-  const [memberSearch, setMemberSearch] = useState("")
+  const navigate = useNavigate()
+  const { getProject, updateProject, deleteProject } = useProjects(teamLogin)
+  const [project, setProject] = useState<ProjectDetail | null>(null)
+  const [name, setName] = useState("")
+  const [description, setDescription] = useState("")
+  const [imgUrl, setImgUrl] = useState("")
+  const [isArchived, setIsArchived] = useState(false)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState("")
   const [saveSuccess, setSaveSuccess] = useState(false)
 
   useEffect(() => {
-    document.title = "Настройки проекта"
-  }, [])
+    let cancelled = false
 
-  const filteredMembers = teamMembers.filter((m) =>
-    m.name.toLowerCase().includes(memberSearch.toLowerCase())
-  )
+    const loadProject = async () => {
+      if (!projectId) return
+      const data = await getProject(projectId)
+      if (cancelled) return
 
-  const toggleMember = (id: string) => {
-    setSelectedMembers((prev) =>
-      prev.includes(id) ? prev.filter((m) => m !== id) : [...prev, id]
-    )
+      setProject(data)
+      if (data) {
+        setName(data.name)
+        setDescription(data.description || "")
+        setImgUrl(data.img_url || "")
+        setIsArchived(data.is_archived)
+      }
+    }
+
+    loadProject()
+    return () => {
+      cancelled = true
+    }
+  }, [getProject, projectId])
+
+  useEffect(() => {
+    document.title = project?.name ? `${project.name} • Настройки` : "Настройки проекта"
+  }, [project])
+
+  const handleSave = async () => {
+    if (!projectId) return
+    const trimmedName = name.trim()
+    if (!trimmedName) {
+      setError("Название проекта обязательно")
+      return
+    }
+
+    setSaving(true)
+    setError("")
+    setSaveSuccess(false)
+
+    try {
+      const updated = await updateProject(projectId, {
+        name: trimmedName,
+        description: description.trim(),
+        img_url: imgUrl.trim(),
+        is_archived: isArchived,
+      })
+
+      if (!updated) {
+        setError("Не удалось сохранить проект")
+        return
+      }
+
+      setProject((prev) => prev ? { ...prev, ...updated } : updated as ProjectDetail)
+      setSaveSuccess(true)
+      setTimeout(() => setSaveSuccess(false), 2000)
+    } catch (saveError) {
+      console.error("Failed to save project:", saveError)
+      setError("Не удалось сохранить проект")
+    } finally {
+      setSaving(false)
+    }
   }
 
-  const handleSave = () => {
-    // TODO: API call
-    setSaveSuccess(true)
-    setTimeout(() => setSaveSuccess(false), 2000)
+  const handleDelete = async () => {
+    if (!projectId) return
+    const ok = await deleteProject(projectId)
+    if (ok && teamLogin) {
+      navigate(`/teams/${teamLogin}/projects`)
+    }
+  }
+
+  if (!project) {
+    return (
+      <div className="flex flex-col gap-4 p-4 lg:p-6">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Link to={`/teams/${teamLogin}/projects`} className="hover:text-foreground">Проекты</Link>
+          <ChevronRight className="size-4" />
+          <span>Загрузка...</span>
+        </div>
+        <div className="rounded-2xl border p-8 text-center text-muted-foreground">Загрузка проекта...</div>
+      </div>
+    )
   }
 
   return (
     <div className="flex flex-col gap-6 p-4 lg:p-6">
-      {/* Breadcrumbs */}
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
         <Link to={`/teams/${teamLogin}/projects`} className="hover:text-foreground">
           Проекты
         </Link>
         <ChevronRight className="size-4" />
         <Link to={`/teams/${teamLogin}/projects/${projectId}`} className="hover:text-foreground">
-          Разработка сайта
+          {project.name}
         </Link>
         <ChevronRight className="size-4" />
         <span className="text-foreground font-medium">Настройки</span>
       </div>
 
-      {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold">Настройки проекта</h1>
           <p className="text-sm text-muted-foreground">Управление параметрами проекта</p>
         </div>
         <div className="flex items-center gap-2">
-          {saveSuccess && (
-            <span className="text-sm text-green-600">Сохранено!</span>
-          )}
-          <Button onClick={handleSave}>
+          {saveSuccess && <span className="text-sm text-green-600">Сохранено!</span>}
+          <Button onClick={handleSave} disabled={saving}>
             <Save className="mr-2 size-4" />
-            Сохранить
+            {saving ? "Сохранение..." : "Сохранить"}
           </Button>
         </div>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        {/* General settings */}
-        <div className="flex flex-col gap-4 rounded-xl border p-6">
+        <div className="flex flex-col gap-4 rounded-2xl border bg-card p-6">
           <div className="flex items-center gap-2">
             <Settings className="size-5 text-muted-foreground" />
             <h2 className="text-lg font-semibold">Основные</h2>
           </div>
 
-          {/* Cover image */}
           <div className="flex flex-col gap-2">
             <label className="text-sm font-medium">Обложка проекта</label>
-            <div className="relative h-36 overflow-hidden rounded-lg border bg-muted/30">
-              {imageUrl ? (
-                <img src={imageUrl} alt="" className="h-full w-full object-cover" />
+            <div className="relative h-40 overflow-hidden rounded-xl border bg-muted/20">
+              {imgUrl ? (
+                <img src={imgUrl} alt={name} className="h-full w-full object-cover" />
               ) : (
                 <div className="flex h-full items-center justify-center">
-                  <ImageIcon className="size-8 text-muted-foreground" />
+                  <ImageIcon className="size-10 text-muted-foreground" />
                 </div>
               )}
             </div>
             <Input
               placeholder="URL изображения"
-              value={imageUrl}
-              onChange={(e) => setImageUrl(e.target.value)}
+              value={imgUrl}
+              onChange={(e) => setImgUrl(e.target.value)}
             />
           </div>
 
-          {/* Name */}
           <div className="flex flex-col gap-2">
             <label className="text-sm font-medium">Название *</label>
             <Input
-              value={projectName}
-              onChange={(e) => setProjectName(e.target.value)}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
             />
           </div>
 
-          {/* Description */}
           <div className="flex flex-col gap-2">
             <label className="text-sm font-medium">Описание</label>
             <Textarea
-              value={projectDesc}
-              onChange={(e) => setProjectDesc(e.target.value)}
-              rows={3}
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              rows={4}
             />
           </div>
-        </div>
 
-        {/* Members */}
-        <div className="flex flex-col gap-4 rounded-xl border p-6">
-          <div className="flex items-center gap-2">
-            <Users className="size-5 text-muted-foreground" />
-            <h2 className="text-lg font-semibold">Участники</h2>
-          </div>
-
-          {/* Selected members */}
-          {selectedMembers.length > 0 && (
-            <div className="flex flex-wrap gap-1.5">
-              {selectedMembers.map((id) => {
-                const member = teamMembers.find((m) => m.id === id)
-                if (!member) return null
-                return (
-                  <Badge key={id} variant="secondary" className="flex items-center gap-1 pr-1">
-                    {member.name}
-                    <button onClick={() => toggleMember(id)} className="ml-0.5 hover:text-destructive">
-                      <X className="size-3" />
-                    </button>
-                  </Badge>
-                )
-              })}
-            </div>
-          )}
-
-          {/* Search */}
-          <Input
-            placeholder="Поиск участников..."
-            value={memberSearch}
-            onChange={(e) => setMemberSearch(e.target.value)}
-          />
-
-          {/* Members list */}
-          <div className="max-h-60 overflow-y-auto rounded-md border">
-            {filteredMembers.map((member) => (
-              <label
-                key={member.id}
-                className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-muted cursor-pointer"
-              >
-                <Checkbox
-                  checked={selectedMembers.includes(member.id)}
-                  onCheckedChange={() => toggleMember(member.id)}
-                />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate">{member.name}</p>
-                  <p className="text-xs text-muted-foreground">{member.email}</p>
-                </div>
-              </label>
-            ))}
-            {filteredMembers.length === 0 && (
-              <p className="px-3 py-2 text-sm text-muted-foreground">Не найдено</p>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Danger zone */}
-      <div className="flex flex-col gap-4 rounded-xl border border-destructive/30 p-6">
-        <div className="flex items-center gap-2">
-          <Trash2 className="size-5 text-destructive" />
-          <h2 className="text-lg font-semibold text-destructive">Опасная зона</h2>
-        </div>
-        <p className="text-sm text-muted-foreground">
-          Удаление проекта необратимо. Все данные проекта, включая задачи, заметки и ссылки, будут потеряны.
-        </p>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={() => {}}>
-            <Archive className="mr-2 size-4" />
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={isArchived}
+              onChange={(e) => setIsArchived(e.target.checked)}
+            />
             Архивировать проект
-          </Button>
-          <Button variant="destructive" onClick={() => setDeleteDialogOpen(true)}>
-            <Trash2 className="mr-2 size-4" />
-            Удалить проект
-          </Button>
+          </label>
+
+          {error && <p className="text-sm text-destructive">{error}</p>}
+        </div>
+
+        <div className="flex flex-col gap-4 rounded-2xl border border-destructive/30 bg-card p-6">
+          <div className="flex items-center gap-2">
+            <Trash2 className="size-5 text-destructive" />
+            <h2 className="text-lg font-semibold text-destructive">Опасная зона</h2>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Удаление проекта необратимо. Все данные проекта будут помечены как удалённые.
+          </p>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={handleSave} disabled={saving}>
+              <Archive className="mr-2 size-4" />
+              {isArchived ? "Сохранить архив" : "Архивировать"}
+            </Button>
+            <Button variant="destructive" onClick={() => setDeleteDialogOpen(true)}>
+              <Trash2 className="mr-2 size-4" />
+              Удалить проект
+            </Button>
+          </div>
         </div>
       </div>
 
-      {/* Delete confirmation */}
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Удалить проект?</AlertDialogTitle>
             <AlertDialogDescription>
-              Проект «{projectName}» и все его данные будут удалены безвозвратно. Это действие нельзя отменить.
+              Проект «{project.name}» будет скрыт из списка. Это действие можно будет вернуть только из базы данных.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Отмена</AlertDialogCancel>
-            <AlertDialogAction className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+            <AlertDialogAction className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={handleDelete}>
               Удалить
             </AlertDialogAction>
           </AlertDialogFooter>

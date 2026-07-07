@@ -42,7 +42,7 @@ export function LandingPage() {
   }, [loading, user])
 
   return (
-    <div className="flex min-h-svh items-center justify-center bg-background px-6">
+    <div className="flex min-h-svh items-center justify-center bg-white px-6 text-slate-900 dark:bg-white dark:text-slate-900">
       <div className="flex flex-col items-center gap-4 text-center">
         <LoaderCircle className="size-10 animate-spin text-primary" />
         <div className="space-y-1">

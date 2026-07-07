@@ -30,7 +30,9 @@ export function UserProvider({ children }: { children: ReactNode }) {
         setUser(data.data)
       }
     } catch (error) {
-      console.error("Failed to fetch user info:", error)
+      if ((error as { response?: { status?: number } })?.response?.status !== 401) {
+        console.error("Failed to fetch user info:", error)
+      }
     } finally {
       setLoading(false)
     }

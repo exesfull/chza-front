@@ -54,7 +54,9 @@ export function TeamsProvider({ children }: { children: ReactNode }) {
         }
       }
     } catch (error) {
-      console.error("Failed to fetch teams:", error)
+      if ((error as { response?: { status?: number } })?.response?.status !== 401) {
+        console.error("Failed to fetch teams:", error)
+      }
     } finally {
       setLoading(false)
     }
@@ -67,7 +69,9 @@ export function TeamsProvider({ children }: { children: ReactNode }) {
         setTeamMembership(data.data)
       }
     } catch (error) {
-      console.error("Failed to check team membership:", error)
+      if ((error as { response?: { status?: number } })?.response?.status !== 401) {
+        console.error("Failed to check team membership:", error)
+      }
     }
   }, [])
 

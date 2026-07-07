@@ -132,9 +132,7 @@ const routes: RouteObject[] = [
   },
 ]
 
-export const router = createBrowserRouter(routes, {
-  basename: import.meta.env.BASE_URL,
-})
+export const router = createBrowserRouter(routes)
 
 export default function AppRouter() {
   return <RouterProvider router={router} />

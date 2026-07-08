@@ -151,31 +151,19 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 
     const hasBoardRoute = Boolean(boardId || location.pathname.includes("/boards/"))
     const hasListRoute = Boolean(listId || location.pathname.includes("/tasks/"))
-    const projectUrl = `projects/${activeProject.id}`
-    const objectItems = hasBoardRoute
-      ? (activeProject.boards || []).map((board) => ({
-          title: board.name,
-          url: `projects/${activeProject.id}/boards/${board.id}`,
+    const currentObject = hasBoardRoute
+      ? {
+          title: activeProject.boards?.find((board) => board.id === boardId)?.name || "Открытая доска",
+          url: boardId ? `projects/${activeProject.id}/boards/${boardId}` : `projects/${activeProject.id}`,
           icon: SquareStack,
-        }))
+        }
       : hasListRoute
-        ? (activeProject.task_lists || []).map((list) => ({
-            title: list.name,
-            url: `projects/${activeProject.id}/tasks/${list.id}`,
+        ? {
+            title: activeProject.task_lists?.find((list) => list.id === listId)?.name || "Открытый список",
+            url: listId ? `projects/${activeProject.id}/tasks/${listId}` : `projects/${activeProject.id}`,
             icon: ListTodo,
-          }))
-        : [
-            ...(activeProject.task_lists || []).map((list) => ({
-              title: list.name,
-              url: `projects/${activeProject.id}/tasks/${list.id}`,
-              icon: ListTodo,
-            })),
-            ...(activeProject.boards || []).map((board) => ({
-              title: board.name,
-              url: `projects/${activeProject.id}/boards/${board.id}`,
-              icon: SquareStack,
-            })),
-          ]
+          }
+        : null
 
     return {
       ...item,
@@ -183,10 +171,15 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       items: [
         {
           title: activeProject.name,
-          url: projectUrl,
+          url: `projects/${activeProject.id}`,
           icon: FolderKanban,
         },
-        ...objectItems,
+        {
+          title: "Главная",
+          url: `projects/${activeProject.id}`,
+          icon: LayoutDashboard,
+        },
+        ...(currentObject ? [currentObject] : []),
       ],
     }
   })

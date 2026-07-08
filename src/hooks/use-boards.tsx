@@ -64,7 +64,7 @@ export function useBoards(teamLogin?: string) {
     return null
   }, [teamLogin])
 
-  const createBoard = useCallback(async (projectId: string, payload: { name: string; description?: string }) => {
+  const createBoard = useCallback(async (projectId: string, payload: { name: string; description?: string; parent_id?: string | null }) => {
     if (!teamLogin) return null
 
     const { data } = await api.post(

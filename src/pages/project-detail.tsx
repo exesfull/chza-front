@@ -7,15 +7,17 @@ import {
   CalendarArrowDown,
   CalendarArrowUp,
   ChevronRight,
-  ExternalLink,
-  Image as ImageIcon,
-  LayoutGrid,
+  FolderPlus,
+  House,
   Link2,
   ListTodo,
   Plus,
   Search,
   Settings,
+  Trash2,
   SquareStack,
+  MoveRight,
+  Pencil,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -27,8 +29,20 @@ import { api } from "@/lib/api"
 import { useProjects, type ProjectDetail } from "@/hooks/use-projects"
 import { useBoards } from "@/hooks/use-boards"
 
-type ResourceType = "board" | "calendar" | "link"
 type BoardSort = "updated_desc" | "updated_asc" | "name_asc" | "name_desc"
+type ProjectCreateType = "folder" | "task_list" | "link" | "board" | "calendar"
+
+interface ProjectGridItem {
+  id: string
+  type: ProjectCreateType
+  title: string
+  description: string | null
+  url?: string
+  parent_id: string | null
+  updated_at: string | null
+  children: ProjectGridItem[]
+  depth?: number
+}
 
 function formatDate(dateStr: string | null): string {
   if (!dateStr) return "Только что"
@@ -37,36 +51,64 @@ function formatDate(dateStr: string | null): string {
   return date.toLocaleDateString("ru-RU", { day: "numeric", month: "short", year: "numeric" })
 }
 
-function getBoardIcon(viewType?: string | null) {
-  if (viewType === "calendar") return Calendar
-  if (viewType === "table") return LayoutGrid
-  return ListTodo
+function getProjectItemIcon(type: ProjectCreateType) {
+  if (type === "folder") return FolderPlus
+  if (type === "task_list") return ListTodo
+  if (type === "link") return Link2
+  if (type === "calendar") return Calendar
+  return SquareStack
+}
+
+function flattenProjectItems(items: ProjectGridItem[], depth = 0): ProjectGridItem[] {
+  const output: ProjectGridItem[] = []
+  const walk = (entry: ProjectGridItem, currentDepth: number) => {
+    output.push({ ...entry, depth: currentDepth })
+    entry.children.forEach((child) => walk(child, currentDepth + 1))
+  }
+  items.forEach((item) => walk(item, depth))
+  return output
+}
+
+function mapApiProjectItems(items: NonNullable<ProjectDetail["items"]>): ProjectGridItem[] {
+  return items.map((item) => ({
+    id: item.id,
+    type: item.object_type as ProjectCreateType,
+    title: item.name,
+    description: item.description,
+    url: undefined,
+    parent_id: item.parent_id,
+    updated_at: item.updated_at,
+    children: mapApiProjectItems(item.children || []),
+  }))
 }
 
 export function ProjectPage() {
   const { teamLogin, projectId } = useParams()
   const navigate = useNavigate()
-  const { getProject } = useProjects(teamLogin, { autoLoad: false })
+  const { getProject, createFolder, renameItem, moveItem, deleteItem } = useProjects(teamLogin, { autoLoad: false })
   const { createBoard } = useBoards(teamLogin)
   const [project, setProject] = useState<ProjectDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [boardSearch, setBoardSearch] = useState("")
   const [boardSort, setBoardSort] = useState<BoardSort>("updated_desc")
-  const [canvasSearch, setCanvasSearch] = useState("")
-  const [canvasSort, setCanvasSort] = useState<BoardSort>("updated_desc")
-  const [addOpen, setAddOpen] = useState(false)
-  const [resourceType, setResourceType] = useState<ResourceType>("board")
-  const [boardName, setBoardName] = useState("")
-  const [boardDescription, setBoardDescription] = useState("")
-  const [linkTitle, setLinkTitle] = useState("")
+  const [currentFolderId, setCurrentFolderId] = useState<string | null>(null)
+  const [createOpen, setCreateOpen] = useState(false)
+  const [createStep, setCreateStep] = useState<"choose" | "form">("choose")
+  const [createType, setCreateType] = useState<ProjectCreateType>("folder")
+  const [createName, setCreateName] = useState("")
+  const [createDescription, setCreateDescription] = useState("")
+  const [createParentId, setCreateParentId] = useState<string | null>(null)
   const [linkUrl, setLinkUrl] = useState("")
   const [linkComment, setLinkComment] = useState("")
   const [submitting, setSubmitting] = useState(false)
   const [formError, setFormError] = useState("")
-  const [boardCreateOpen, setBoardCreateOpen] = useState(false)
-  const [boardCreateName, setBoardCreateName] = useState("")
-  const [boardCreateDescription, setBoardCreateDescription] = useState("")
-  const [boardCreateSubmitting, setBoardCreateSubmitting] = useState(false)
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; itemId?: string | null; parentId?: string | null } | null>(null)
+  const [renameOpen, setRenameOpen] = useState(false)
+  const [renameValue, setRenameValue] = useState("")
+  const [renameItemId, setRenameItemId] = useState<string | null>(null)
+  const [moveOpen, setMoveOpen] = useState(false)
+  const [moveItemId, setMoveItemId] = useState<string | null>(null)
+  const [moveTargetParentId, setMoveTargetParentId] = useState<string | null>(null)
 
   const refreshProject = async () => {
     if (!projectId) return
@@ -101,151 +143,196 @@ export function ProjectPage() {
     document.title = project?.name ? `Проект: ${project.name}` : "Проект"
   }, [project])
 
-  const boards = useMemo(() => {
-    const items = project?.task_lists ?? []
-    const filtered = items.filter((item) =>
-      `${item.name} ${item.description || ""}`.toLowerCase().includes(boardSearch.toLowerCase())
-    )
+  const projectItems = useMemo(() => {
+    const itemsFromApi = project?.items ? mapApiProjectItems(project.items) : []
+    const fallbackItems: ProjectGridItem[] = itemsFromApi.length > 0 ? [] : [
+      ...(project?.task_lists || []).map((item) => ({
+        id: item.id,
+        type: "task_list" as const,
+        title: item.name,
+        description: item.description,
+        parent_id: null,
+        updated_at: item.updated_at,
+        children: [],
+      })),
+      ...(project?.links || []).map((item) => ({
+        id: item.id,
+        type: "link" as const,
+        title: item.title,
+        description: item.comment,
+        parent_id: null,
+        updated_at: item.updated_at,
+        children: [],
+      })),
+      ...(project?.boards || []).map((item) => ({
+        id: item.id,
+        type: "board" as const,
+        title: item.name,
+        description: item.description,
+        parent_id: null,
+        updated_at: item.updated_at,
+        children: [],
+      })),
+    ]
 
-    const sorted = [...filtered]
-    switch (boardSort) {
-      case "name_asc":
-        sorted.sort((a, b) => a.name.localeCompare(b.name, "ru"))
-        break
-      case "name_desc":
-        sorted.sort((a, b) => b.name.localeCompare(a.name, "ru"))
-        break
-      case "updated_asc":
-        sorted.sort((a, b) => new Date((a.updated_at || "").replace(" ", "T")).getTime() - new Date((b.updated_at || "").replace(" ", "T")).getTime())
-        break
-      default:
-        sorted.sort((a, b) => new Date((b.updated_at || "").replace(" ", "T")).getTime() - new Date((a.updated_at || "").replace(" ", "T")).getTime())
-        break
+    const source = itemsFromApi.length > 0 ? flattenProjectItems(itemsFromApi) : flattenProjectItems(fallbackItems)
+    const filtered = source.filter((item) => {
+      const haystack = `${item.title} ${item.description || ""}`.toLowerCase()
+      return haystack.includes(boardSearch.toLowerCase())
+    })
+
+    return filtered.sort((a, b) => {
+      switch (boardSort) {
+        case "name_asc":
+          return a.title.localeCompare(b.title, "ru")
+        case "name_desc":
+          return b.title.localeCompare(a.title, "ru")
+        case "updated_asc":
+          return new Date((a.updated_at || "").replace(" ", "T")).getTime() - new Date((b.updated_at || "").replace(" ", "T")).getTime()
+        default:
+          return new Date((b.updated_at || "").replace(" ", "T")).getTime() - new Date((a.updated_at || "").replace(" ", "T")).getTime()
+      }
+    })
+  }, [project?.items, project?.task_lists, project?.links, project?.boards, boardSearch, boardSort])
+
+  const folderItems = useMemo(() => projectItems.filter((item) => item.type === "folder"), [projectItems])
+  const currentItem = contextMenu?.itemId ? projectItems.find((item) => item.id === contextMenu.itemId) || null : null
+  const currentFolder = currentFolderId ? projectItems.find((item) => item.id === currentFolderId) || null : null
+  const visibleItems = useMemo(() => {
+    const source = boardSearch.trim()
+      ? projectItems
+      : projectItems.filter((item) => (currentFolderId ? item.parent_id === currentFolderId : !item.parent_id))
+    return source.filter((item) => {
+      const typeLabel = item.type === "folder" ? "Папка" : item.type === "task_list" ? "Список задач" : item.type === "link" ? "Ссылка" : item.type === "calendar" ? "Календарь" : "Доска"
+      return `${item.title} ${item.description || ""} ${typeLabel}`.toLowerCase().includes(boardSearch.toLowerCase())
+    })
+  }, [projectItems, currentFolderId, boardSearch])
+
+  const getItemLink = (item: ProjectGridItem) => {
+    if (item.type === "task_list") return `/teams/${teamLogin}/projects/${projectId}/tasks/${item.id}`
+    if (item.type === "board") return `/teams/${teamLogin}/projects/${projectId}/boards/${item.id}`
+    if (item.type === "link") {
+      const link = project?.links?.find((l) => l.id === item.id)
+      return link?.url || ""
     }
+    return ""
+  }
 
-    return sorted
-  }, [project?.task_lists, boardSearch, boardSort])
-
-  const links = project?.links ?? []
-  const canvasBoards = useMemo(() => {
-    const items = project?.boards ?? []
-    const filtered = items.filter((item) =>
-      `${item.name} ${item.description || ""}`.toLowerCase().includes(canvasSearch.toLowerCase())
-    )
-
-    const sorted = [...filtered]
-    switch (canvasSort) {
-      case "name_asc":
-        sorted.sort((a, b) => a.name.localeCompare(b.name, "ru"))
-        break
-      case "name_desc":
-        sorted.sort((a, b) => b.name.localeCompare(a.name, "ru"))
-        break
-      case "updated_asc":
-        sorted.sort((a, b) => new Date((a.updated_at || "").replace(" ", "T")).getTime() - new Date((b.updated_at || "").replace(" ", "T")).getTime())
-        break
+  const getItemKindLabel = (item: ProjectGridItem) => {
+    switch (item.type) {
+      case "folder":
+        return "Папка"
+      case "task_list":
+        return "Список задач"
+      case "link":
+        return "Ссылка"
+      case "calendar":
+        return "Календарь"
       default:
-        sorted.sort((a, b) => new Date((b.updated_at || "").replace(" ", "T")).getTime() - new Date((a.updated_at || "").replace(" ", "T")).getTime())
-        break
+        return "Доска"
     }
+  }
 
-    return sorted
-  }, [project?.boards, canvasSearch, canvasSort])
-
-  const resetDialog = () => {
-    setAddOpen(false)
+  const resetCreate = () => {
+    setCreateOpen(false)
+    setCreateStep("choose")
+    setCreateType("folder")
+    setCreateName("")
+    setCreateDescription("")
+    setCreateParentId(null)
+    setLinkUrl("")
+    setLinkComment("")
     setFormError("")
     setSubmitting(false)
   }
 
-  const handleCreateBoard = async () => {
-    if (!teamLogin || !projectId) return
-    if (!boardCreateName.trim() || boardCreateSubmitting) return
-
-    setBoardCreateSubmitting(true)
-    try {
-      const board = await createBoard(projectId, {
-        name: boardCreateName.trim(),
-        description: boardCreateDescription.trim(),
-      })
-
-      if (!board) {
-        throw new Error("board_create_failed")
-      }
-
-      await refreshProject()
-      setBoardCreateOpen(false)
-      setBoardCreateName("")
-      setBoardCreateDescription("")
-      navigate(`/teams/${teamLogin}/projects/${projectId}/boards/${board.id}`)
-    } catch (error) {
-      console.error("Failed to create board:", error)
-      setBoardCreateSubmitting(false)
-    } finally {
-      setBoardCreateSubmitting(false)
-    }
+  const openCreate = (type?: ProjectCreateType, parentId?: string | null) => {
+    setCreateOpen(true)
+    setCreateStep(type ? "form" : "choose")
+    setCreateType(type || "folder")
+    setCreateParentId(parentId ?? null)
+    setFormError("")
   }
 
-  const handleCreateResource = async () => {
-    if (!teamLogin || !projectId) return
+  const handleCreate = async () => {
+    if (!teamLogin || !projectId || submitting) return
     setSubmitting(true)
     setFormError("")
 
     try {
-      if (resourceType === "link") {
-        if (!linkTitle.trim() || !linkUrl.trim()) {
+      if (createType === "folder") {
+        if (!createName.trim()) {
+          setFormError("Укажите название папки")
+          return
+        }
+        const folder = await createFolder(projectId, {
+          name: createName.trim(),
+          description: createDescription.trim(),
+          parent_id: createParentId,
+        })
+        if (!folder) throw new Error("folder_create_failed")
+        await refreshProject()
+        resetCreate()
+        return
+      }
+
+      if (createType === "link") {
+        if (!createName.trim() || !linkUrl.trim()) {
           setFormError("Укажите название и URL ссылки")
           return
         }
-
         const form = new URLSearchParams()
-        form.append("title", linkTitle.trim())
+        form.append("title", createName.trim())
         form.append("url", linkUrl.trim())
         if (linkComment.trim()) form.append("comment", linkComment.trim())
-
+        if (createParentId) form.append("parent_id", createParentId)
         const { data } = await api.post(
           `/main/links/create/?team_login=${teamLogin}&project_id=${projectId}`,
           form,
           { headers: { "Content-Type": "application/x-www-form-urlencoded" } }
         )
-
-        if (!data.status) {
-          throw new Error(data?.error || "link_create_failed")
-        }
-
+        if (!data.status) throw new Error(data?.error || "link_create_failed")
         await refreshProject()
-        resetDialog()
+        resetCreate()
         return
       }
 
-      if (!boardName.trim()) {
-        setFormError("Укажите название доски")
+      if (!createName.trim()) {
+        setFormError("Укажите название")
+        return
+      }
+
+      if (createType === "board") {
+      const board = await createBoard(projectId, {
+        name: createName.trim(),
+        description: createDescription.trim(),
+        parent_id: createParentId,
+      })
+        if (!board) throw new Error("board_create_failed")
+        await refreshProject()
+        resetCreate()
+        navigate(`/teams/${teamLogin}/projects/${projectId}/boards/${board.id}`)
         return
       }
 
       const form = new URLSearchParams()
-      form.append("name", boardName.trim())
-      form.append("description", boardDescription.trim())
+      form.append("name", createName.trim())
+      form.append("description", createDescription.trim())
       form.append("project_id", projectId)
-      form.append("view_type", resourceType === "calendar" ? "calendar" : "kanban")
-
+      if (createParentId) form.append("parent_id", createParentId)
+      form.append("view_type", createType === "calendar" ? "calendar" : "kanban")
       const { data } = await api.post(
         `/main/task/createList/?team_login=${teamLogin}`,
         form,
         { headers: { "Content-Type": "application/x-www-form-urlencoded" } }
       )
-
-      if (!data.status || !data.data?.id) {
-        throw new Error(data?.error || "board_create_failed")
-      }
-
+      if (!data.status || !data.data?.id) throw new Error(data?.error || "board_create_failed")
       await refreshProject()
-      resetDialog()
+      resetCreate()
       navigate(`/teams/${teamLogin}/projects/${projectId}/tasks/${data.data.id}`)
     } catch (error) {
-      console.error("Failed to create project resource:", error)
+      console.error("Failed to create project item:", error)
       setFormError("Не удалось создать объект")
-      setSubmitting(false)
     } finally {
       setSubmitting(false)
     }
@@ -285,16 +372,15 @@ export function ProjectPage() {
   }
 
   return (
-    <div className="flex flex-col gap-6 p-4 lg:p-6">
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <Link to={`/teams/${teamLogin}/projects`} className="hover:text-foreground">
-          Проекты
-        </Link>
-        <ChevronRight className="size-4" />
-        <span className="text-foreground font-medium">{project.name}</span>
-      </div>
-
-      <div className="flex flex-col gap-4 rounded-3xl border bg-card p-5 shadow-sm md:flex-row md:items-center md:justify-between">
+    <div
+      className="flex flex-col gap-6 p-4 lg:p-6"
+      onContextMenu={(e) => {
+        e.preventDefault()
+        setContextMenu({ x: e.clientX, y: e.clientY, parentId: currentFolderId })
+      }}
+      onClick={() => setContextMenu(null)}
+    >
+      <div className="flex flex-col gap-4 rounded-3xl border bg-card p-5 shadow-sm lg:flex-row lg:items-center lg:justify-between">
         <div className="flex items-center gap-4">
           <div className="flex size-16 items-center justify-center overflow-hidden rounded-2xl bg-muted">
             {project.img_url ? (
@@ -303,309 +389,434 @@ export function ProjectPage() {
               <SquareStack className="size-8 text-muted-foreground" />
             )}
           </div>
-          <div>
-            <h1 className="text-2xl font-bold">{project.name}</h1>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Link to={`/teams/${teamLogin}/projects`} className="hover:text-foreground">
+                Проекты
+              </Link>
+              <ChevronRight className="size-4" />
+              <span className="font-medium text-foreground">{project.name}</span>
+              {currentFolder && (
+                <>
+                  <ChevronRight className="size-4" />
+                  <span className="font-medium text-foreground">{currentFolder.title}</span>
+                </>
+              )}
+            </div>
+            <h1 className="mt-1 text-2xl font-bold">{project.name}</h1>
             <p className="max-w-2xl text-sm text-muted-foreground">
               {project.description || "Описание проекта не указано"}
             </p>
           </div>
         </div>
+
         <div className="flex flex-wrap items-center gap-2">
           <Button variant="outline" onClick={() => navigate(`/teams/${teamLogin}/projects/${project.id}/settings`)}>
             <Settings className="mr-2 size-4" />
             Настройки
           </Button>
-          <Button onClick={() => setAddOpen(true)}>
+          <Button variant="outline" onClick={() => setCurrentFolderId(null)}>
+            <House className="mr-2 size-4" />
+            Главная
+          </Button>
+          <Button onClick={() => openCreate(undefined, currentFolderId)}>
             <Plus className="mr-2 size-4" />
-            Добавить
+            Создать
           </Button>
         </div>
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-[1.4fr_0.9fr]">
-        <div className="rounded-2xl border bg-card p-5">
-          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h2 className="text-lg font-semibold">Доски задач</h2>
-              <p className="text-sm text-muted-foreground">{boards.length} элементов</p>
-            </div>
-            <div className="flex flex-col gap-2 sm:flex-row">
-              <div className="relative w-full sm:w-60">
-                <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  value={boardSearch}
-                  onChange={(e) => setBoardSearch(e.target.value)}
-                  placeholder="Поиск досок..."
-                  className="pl-9"
-                />
-              </div>
-              <Select value={boardSort} onValueChange={(value) => setBoardSort(value as BoardSort)}>
-                <SelectTrigger className="w-full sm:w-56">
-                  <SelectValue placeholder="Сортировка" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="updated_desc">
-                    <span className="flex items-center gap-2"><CalendarArrowDown className="size-4" /> Последние изменения</span>
-                  </SelectItem>
-                  <SelectItem value="updated_asc">
-                    <span className="flex items-center gap-2"><CalendarArrowUp className="size-4" /> Сначала старые</span>
-                  </SelectItem>
-                  <SelectItem value="name_asc">
-                    <span className="flex items-center gap-2"><ArrowUpAZ className="size-4" /> Название (А-Я)</span>
-                  </SelectItem>
-                  <SelectItem value="name_desc">
-                    <span className="flex items-center gap-2"><ArrowUpZA className="size-4" /> Название (Я-А)</span>
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          <div className="max-h-[420px] overflow-y-auto pr-1">
-            {boards.length > 0 ? (
-              <div className="grid gap-3">
-                {boards.map((item) => {
-                  const Icon = getBoardIcon(item.view_type)
-                  return (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() => navigate(`/teams/${teamLogin}/projects/${projectId}/tasks/${item.id}`)}
-                      className="flex items-center gap-4 rounded-2xl border p-4 text-left transition-colors hover:bg-muted/40"
-                    >
-                      <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                        <Icon className="size-5" />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2">
-                          <span className="truncate font-medium">{item.name}</span>
-                          {item.view_type && (
-                            <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
-                              {item.view_type}
-                            </span>
-                          )}
-                        </div>
-                        <p className="truncate text-sm text-muted-foreground">{item.description || "Без описания"}</p>
-                      </div>
-                      <div className="shrink-0 text-right text-xs text-muted-foreground">
-                        <div>{formatDate(item.updated_at)}</div>
-                      </div>
-                    </button>
-                  )
-                })}
-              </div>
-            ) : (
-              <div className="rounded-2xl border border-dashed p-10 text-center text-muted-foreground">
-                <ImageIcon className="mx-auto mb-3 size-10" />
-                <p>Пока нет досок задач</p>
-              </div>
-            )}
+      <div className="flex flex-col gap-3 rounded-2xl border bg-card p-4 shadow-sm lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <div className="text-sm font-medium">Объекты проекта</div>
+          <div className="text-sm text-muted-foreground">
+            {visibleItems.length} {visibleItems.length === 1 ? "объект" : visibleItems.length < 5 ? "объекта" : "объектов"}
           </div>
         </div>
-
-        <div className="rounded-2xl border bg-card p-5">
-          <div className="mb-4 flex items-center justify-between">
-            <div>
-              <h2 className="text-lg font-semibold">Ссылки</h2>
-              <p className="text-sm text-muted-foreground">{links.length} элементов</p>
-            </div>
-            <Link2 className="size-5 text-muted-foreground" />
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <div className="relative w-full sm:w-80">
+            <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={boardSearch}
+              onChange={(e) => setBoardSearch(e.target.value)}
+              placeholder="Поиск по всем объектам..."
+              className="pl-9"
+            />
           </div>
-
-          <div className="grid gap-2">
-            {links.length > 0 ? (
-              links.map((item) => (
-                <a
-                  key={item.id}
-                  href={item.url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="flex items-center gap-3 rounded-xl border p-3 transition-colors hover:bg-muted/40"
-                >
-                  <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted">
-                    <ExternalLink className="size-4 text-muted-foreground" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate font-medium">{item.title}</p>
-                    <p className="truncate text-xs text-muted-foreground">{item.comment || item.url}</p>
-                  </div>
-                </a>
-              ))
-            ) : (
-              <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">
-                Пока нет связанных ссылок
-              </p>
-            )}
-          </div>
+          <Select value={boardSort} onValueChange={(value) => setBoardSort(value as BoardSort)}>
+            <SelectTrigger className="w-full sm:w-56">
+              <SelectValue placeholder="Сортировка" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="updated_desc">
+                <span className="flex items-center gap-2"><CalendarArrowDown className="size-4" /> Последние изменения</span>
+              </SelectItem>
+              <SelectItem value="updated_asc">
+                <span className="flex items-center gap-2"><CalendarArrowUp className="size-4" /> Сначала старые</span>
+              </SelectItem>
+              <SelectItem value="name_asc">
+                <span className="flex items-center gap-2"><ArrowUpAZ className="size-4" /> Название (А-Я)</span>
+              </SelectItem>
+              <SelectItem value="name_desc">
+                <span className="flex items-center gap-2"><ArrowUpZA className="size-4" /> Название (Я-А)</span>
+              </SelectItem>
+            </SelectContent>
+          </Select>
         </div>
       </div>
 
-      <div className="rounded-2xl border bg-card p-5">
-        <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <h2 className="text-lg font-semibold">Доски</h2>
-            <p className="text-sm text-muted-foreground">{canvasBoards.length} элементов</p>
-          </div>
-          <div className="flex flex-col gap-2 sm:flex-row">
-            <div className="relative w-full sm:w-60">
-              <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                value={canvasSearch}
-                onChange={(e) => setCanvasSearch(e.target.value)}
-                placeholder="Поиск досок..."
-                className="pl-9"
-              />
-            </div>
-            <Select value={canvasSort} onValueChange={(value) => setCanvasSort(value as BoardSort)}>
-              <SelectTrigger className="w-full sm:w-56">
-                <SelectValue placeholder="Сортировка" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="updated_desc">
-                  <span className="flex items-center gap-2"><CalendarArrowDown className="size-4" /> Последние изменения</span>
-                </SelectItem>
-                <SelectItem value="updated_asc">
-                  <span className="flex items-center gap-2"><CalendarArrowUp className="size-4" /> Сначала старые</span>
-                </SelectItem>
-                <SelectItem value="name_asc">
-                  <span className="flex items-center gap-2"><ArrowUpAZ className="size-4" /> Название (А-Я)</span>
-                </SelectItem>
-                <SelectItem value="name_desc">
-                  <span className="flex items-center gap-2"><ArrowUpZA className="size-4" /> Название (Я-А)</span>
-                </SelectItem>
-              </SelectContent>
-            </Select>
-            <Button onClick={() => setBoardCreateOpen(true)}>
-              <Plus className="mr-2 size-4" />
-              Создать доску
-            </Button>
-          </div>
-        </div>
-
-        <div className="max-h-[420px] overflow-y-auto pr-1">
-          {canvasBoards.length > 0 ? (
-            <div className="grid gap-3">
-              {canvasBoards.map((item) => (
+      <div className="min-h-[420px] rounded-3xl border bg-card p-4 shadow-sm">
+        {visibleItems.length > 0 ? (
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+            {visibleItems.map((item) => {
+              const Icon = getProjectItemIcon(item.type)
+              return (
                 <button
                   key={item.id}
                   type="button"
-                  onClick={() => navigate(`/teams/${teamLogin}/projects/${projectId}/boards/${item.id}`)}
-                  className="flex items-center gap-4 rounded-2xl border p-4 text-left transition-colors hover:bg-muted/40"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    if (item.type === "folder") {
+                      setCurrentFolderId(item.id)
+                      return
+                    }
+                    const href = getItemLink(item)
+                    if (!href) return
+                    if (item.type === "link") {
+                      window.open(href, "_blank", "noreferrer")
+                      return
+                    }
+                    navigate(href)
+                  }}
+                  onContextMenu={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    setContextMenu({ x: e.clientX, y: e.clientY, itemId: item.id, parentId: item.parent_id })
+                  }}
+                  className="group flex flex-col rounded-2xl border bg-background p-4 text-left transition-colors hover:bg-muted/40"
+                  style={{ marginLeft: item.depth ? `${Math.min(item.depth, 3) * 8}px` : undefined }}
                 >
-                  <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                    {item.img_url ? (
-                      <img src={item.img_url} alt={item.name} className="h-full w-full rounded-xl object-cover" />
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                      <Icon className="size-5" />
+                    </div>
+                    <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+                      {getItemKindLabel(item)}
+                    </span>
+                  </div>
+                  <div className="mt-3 min-w-0 flex-1">
+                    <div className="truncate font-medium">{item.title}</div>
+                    <div className="mt-1 line-clamp-2 text-xs text-muted-foreground">
+                      {item.description || "Без описания"}
+                    </div>
+                  </div>
+                  <div className="mt-3 flex items-center justify-between text-xs text-muted-foreground">
+                    {item.type === "folder" ? (
+                      <span>{item.children.length} внутри</span>
                     ) : (
-                      <SquareStack className="size-5" />
+                      <span className="truncate">
+                        {item.type === "link" ? "Ссылка" : "Открыть"}
+                      </span>
                     )}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <span className="truncate font-medium">{item.name}</span>
-                    <p className="truncate text-sm text-muted-foreground">{item.description || "Без описания"}</p>
-                  </div>
-                  <div className="shrink-0 text-right text-xs text-muted-foreground">
-                    <div>{formatDate(item.updated_at)}</div>
+                    <span>{formatDate(item.updated_at)}</span>
                   </div>
                 </button>
-              ))}
+              )
+            })}
+          </div>
+        ) : (
+          <div className="flex h-full min-h-[360px] items-center justify-center rounded-2xl border border-dashed">
+            <div className="max-w-md text-center text-muted-foreground">
+              <FolderPlus className="mx-auto mb-3 size-10" />
+              <p className="font-medium text-foreground">Пока нет объектов</p>
+              <p className="mt-1 text-sm">
+                Создайте папку, список задач, ссылку или доску, чтобы начать собирать структуру проекта.
+              </p>
+              <Button className="mt-4" onClick={() => openCreate(undefined, currentFolderId)}>
+                <Plus className="mr-2 size-4" />
+                Создать первый объект
+              </Button>
             </div>
-          ) : (
-            <div className="rounded-2xl border border-dashed p-10 text-center text-muted-foreground">
-              <SquareStack className="mx-auto mb-3 size-10" />
-              <p>Пока нет досок</p>
-            </div>
-          )}
-        </div>
+          </div>
+        )}
       </div>
 
-      <div className="rounded-2xl border bg-card p-5 text-sm text-muted-foreground">
+      <div className="rounded-2xl border bg-card p-4 text-sm text-muted-foreground">
         Обновлено: {formatDate(project.updated_at)}
       </div>
 
-      <Dialog open={boardCreateOpen} onOpenChange={setBoardCreateOpen}>
-        <DialogContent className="sm:max-w-[560px]">
+      {contextMenu && (
+        <div
+          className="fixed z-50 min-w-[220px] rounded-2xl border bg-card p-1 shadow-xl"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {currentItem ? (
+            <>
+              <button
+                className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm hover:bg-muted"
+                onClick={() => {
+                  if (currentItem.type === "folder") {
+                    setCurrentFolderId(currentItem.id)
+                  } else {
+                    const href = getItemLink(currentItem)
+                    if (href) {
+                      if (currentItem.type === "link") {
+                        window.open(href, "_blank", "noreferrer")
+                      } else {
+                        navigate(href)
+                      }
+                    }
+                  }
+                  setContextMenu(null)
+                }}
+              >
+                <SquareStack className="size-4" />
+                Открыть
+              </button>
+              <button
+                className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm hover:bg-muted"
+                onClick={() => {
+                  setRenameItemId(currentItem.id)
+                  setRenameValue(currentItem.title)
+                  setRenameOpen(true)
+                  setContextMenu(null)
+                }}
+              >
+                <Pencil className="size-4" />
+                Переименовать
+              </button>
+              <button
+                className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm hover:bg-muted"
+                onClick={() => {
+                  setMoveItemId(currentItem.id)
+                  setMoveTargetParentId(currentItem.parent_id)
+                  setMoveOpen(true)
+                  setContextMenu(null)
+                }}
+              >
+                <MoveRight className="size-4" />
+                Переместить
+              </button>
+              <button
+                className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-destructive hover:bg-destructive/10"
+                onClick={async () => {
+                  if (window.confirm("Вы точно уверены?")) {
+                    await deleteItem(currentItem.id)
+                    await refreshProject()
+                  }
+                  setContextMenu(null)
+                }}
+              >
+                <Trash2 className="size-4" />
+                Удалить
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm hover:bg-muted"
+                onClick={() => { openCreate("folder", contextMenu.parentId ?? null); setContextMenu(null) }}
+              >
+                <FolderPlus className="size-4" />
+                Создать папку
+              </button>
+              <button
+                className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm hover:bg-muted"
+                onClick={() => { openCreate("task_list", contextMenu.parentId ?? null); setContextMenu(null) }}
+              >
+                <ListTodo className="size-4" />
+                Создать список задач
+              </button>
+              <button
+                className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm hover:bg-muted"
+                onClick={() => { openCreate("link", contextMenu.parentId ?? null); setContextMenu(null) }}
+              >
+                <Link2 className="size-4" />
+                Создать ссылку
+              </button>
+              <button
+                className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm hover:bg-muted"
+                onClick={() => { openCreate("board", contextMenu.parentId ?? null); setContextMenu(null) }}
+              >
+                <SquareStack className="size-4" />
+                Создать доску
+              </button>
+              <button
+                className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm hover:bg-muted"
+                onClick={() => { openCreate("calendar", contextMenu.parentId ?? null); setContextMenu(null) }}
+              >
+                <Calendar className="size-4" />
+                Создать календарь
+              </button>
+            </>
+          )}
+        </div>
+      )}
+
+      <Dialog open={createOpen} onOpenChange={(open) => (open ? setCreateOpen(true) : resetCreate())}>
+        <DialogContent className="sm:max-w-[640px]">
           <DialogHeader>
-            <DialogTitle>Создать доску</DialogTitle>
-            <DialogDescription>Создайте новый холст Excalidraw внутри этого проекта</DialogDescription>
+            <DialogTitle>Создать объект</DialogTitle>
+            <DialogDescription>
+              Сначала выберите тип карточки, потом задайте название и параметры.
+            </DialogDescription>
           </DialogHeader>
-          <div className="flex flex-col gap-4 py-2">
-            <div className="flex flex-col gap-2">
-              <label className="text-sm font-medium">Название *</label>
-              <Input value={boardCreateName} onChange={(e) => setBoardCreateName(e.target.value)} placeholder="Название доски" autoFocus />
+
+          {createStep === "choose" ? (
+            <div className="grid gap-3 py-2 sm:grid-cols-2">
+              {[
+                { type: "folder" as const, title: "Папка", icon: FolderPlus, description: "Группировка объектов" },
+                { type: "task_list" as const, title: "Список задач", icon: ListTodo, description: "Обычный список или канбан" },
+                { type: "link" as const, title: "Ссылка", icon: Link2, description: "Внешняя ссылка" },
+                { type: "board" as const, title: "Доска", icon: SquareStack, description: "Excalidraw / whiteboard" },
+                { type: "calendar" as const, title: "Календарь", icon: Calendar, description: "Список с календарным видом" },
+              ].map((item) => {
+                const Icon = item.icon
+                return (
+                  <button
+                    key={item.type}
+                    type="button"
+                    className="flex items-start gap-3 rounded-2xl border p-4 text-left transition-colors hover:bg-muted/40"
+                    onClick={() => {
+                      setCreateType(item.type)
+                      setCreateStep("form")
+                      setFormError("")
+                    }}
+                  >
+                    <div className="flex size-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                      <Icon className="size-5" />
+                    </div>
+                    <div>
+                      <div className="font-medium">{item.title}</div>
+                      <div className="text-sm text-muted-foreground">{item.description}</div>
+                    </div>
+                  </button>
+                )
+              })}
             </div>
-            <div className="flex flex-col gap-2">
-              <label className="text-sm font-medium">Описание</label>
-              <Textarea value={boardCreateDescription} onChange={(e) => setBoardCreateDescription(e.target.value)} rows={3} placeholder="Необязательно" />
+          ) : (
+            <div className="flex flex-col gap-4 py-2">
+              <div className="rounded-2xl border bg-muted/20 p-3 text-sm">
+                <span className="font-medium">Тип:</span> {createType === "folder" ? "Папка" : createType === "task_list" ? "Список задач" : createType === "link" ? "Ссылка" : createType === "calendar" ? "Календарь" : "Доска"}
+              </div>
+              <div className="flex flex-col gap-2">
+                <label className="text-sm font-medium">Название *</label>
+                <Input
+                  value={createName}
+                  onChange={(e) => setCreateName(e.target.value)}
+                  placeholder="Введите название"
+                  autoFocus
+                />
+              </div>
+              {createType !== "folder" && createType !== "link" && (
+                <div className="flex flex-col gap-2">
+                  <label className="text-sm font-medium">Описание</label>
+                  <Textarea
+                    value={createDescription}
+                    onChange={(e) => setCreateDescription(e.target.value)}
+                    rows={3}
+                    placeholder="Необязательно"
+                  />
+                </div>
+              )}
+              {createType === "link" && (
+                <>
+                  <div className="flex flex-col gap-2">
+                    <label className="text-sm font-medium">URL *</label>
+                    <Input value={linkUrl} onChange={(e) => setLinkUrl(e.target.value)} placeholder="https://example.com" />
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    <label className="text-sm font-medium">Комментарий</label>
+                    <Textarea value={linkComment} onChange={(e) => setLinkComment(e.target.value)} rows={3} placeholder="Необязательно" />
+                  </div>
+                </>
+              )}
+              {createType === "folder" && (
+                <div className="flex flex-col gap-2">
+                  <label className="text-sm font-medium">Описание</label>
+                  <Textarea
+                    value={createDescription}
+                    onChange={(e) => setCreateDescription(e.target.value)}
+                    rows={3}
+                    placeholder="Необязательно"
+                  />
+                </div>
+              )}
+              {createParentId && (
+                <div className="rounded-2xl border bg-muted/20 p-3 text-sm text-muted-foreground">
+                  Создание внутри папки: {folderItems.find((item) => item.id === createParentId)?.title || "папка"}
+                </div>
+              )}
+              {formError && <p className="text-sm text-destructive">{formError}</p>}
             </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setBoardCreateOpen(false)} disabled={boardCreateSubmitting}>
-              Отмена
+          )}
+
+          <DialogFooter className="gap-2 sm:justify-between">
+            <Button variant="outline" onClick={() => (createStep === "choose" ? resetCreate() : setCreateStep("choose"))} disabled={submitting}>
+              {createStep === "choose" ? "Отмена" : "Назад"}
             </Button>
-            <Button onClick={handleCreateBoard} disabled={boardCreateSubmitting}>
-              {boardCreateSubmitting ? "Создание..." : "Создать"}
+            {createStep === "form" && (
+              <Button onClick={handleCreate} disabled={submitting}>
+                {submitting ? "Создание..." : "Создать"}
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={renameOpen} onOpenChange={(open) => { if (!open) setRenameOpen(false) }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Переименовать</DialogTitle>
+          </DialogHeader>
+          <Input value={renameValue} onChange={(e) => setRenameValue(e.target.value)} autoFocus />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRenameOpen(false)}>Отмена</Button>
+            <Button
+              onClick={async () => {
+                if (!renameItemId || !renameValue.trim()) return
+                await renameItem(renameItemId, renameValue.trim())
+                await refreshProject()
+                setRenameOpen(false)
+              }}
+            >
+              Сохранить
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      <Dialog open={addOpen} onOpenChange={setAddOpen}>
-        <DialogContent className="sm:max-w-[560px]">
+      <Dialog open={moveOpen} onOpenChange={(open) => { if (!open) setMoveOpen(false) }}>
+        <DialogContent>
           <DialogHeader>
-            <DialogTitle>Добавить объект в проект</DialogTitle>
-            <DialogDescription>Создайте доску задач, календарь или ссылку внутри этого проекта</DialogDescription>
+            <DialogTitle>Переместить</DialogTitle>
+            <DialogDescription>Выберите папку назначения или оставьте в корне.</DialogDescription>
           </DialogHeader>
-          <div className="flex flex-col gap-4 py-2">
-            <div className="flex flex-col gap-2">
-              <label className="text-sm font-medium">Тип объекта</label>
-              <Select value={resourceType} onValueChange={(value) => setResourceType(value as ResourceType)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Выберите тип" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="board">Доска задач</SelectItem>
-                  <SelectItem value="calendar">Календарь</SelectItem>
-                  <SelectItem value="link">Ссылка</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {resourceType === "link" ? (
-              <>
-                <div className="flex flex-col gap-2">
-                  <label className="text-sm font-medium">Название *</label>
-                  <Input value={linkTitle} onChange={(e) => setLinkTitle(e.target.value)} placeholder="Название ссылки" autoFocus />
-                </div>
-                <div className="flex flex-col gap-2">
-                  <label className="text-sm font-medium">URL *</label>
-                  <Input value={linkUrl} onChange={(e) => setLinkUrl(e.target.value)} placeholder="https://example.com" />
-                </div>
-                <div className="flex flex-col gap-2">
-                  <label className="text-sm font-medium">Комментарий</label>
-                  <Textarea value={linkComment} onChange={(e) => setLinkComment(e.target.value)} rows={3} placeholder="Необязательно" />
-                </div>
-              </>
-            ) : (
-              <>
-                <div className="flex flex-col gap-2">
-                  <label className="text-sm font-medium">Название *</label>
-                  <Input value={boardName} onChange={(e) => setBoardName(e.target.value)} placeholder={resourceType === "calendar" ? "Название календаря" : "Название доски"} autoFocus />
-                </div>
-                <div className="flex flex-col gap-2">
-                  <label className="text-sm font-medium">Описание</label>
-                  <Textarea value={boardDescription} onChange={(e) => setBoardDescription(e.target.value)} rows={3} placeholder="Необязательно" />
-                </div>
-              </>
-            )}
-
-            {formError && <p className="text-sm text-destructive">{formError}</p>}
-          </div>
+          <Select value={moveTargetParentId || "__root__"} onValueChange={(value) => setMoveTargetParentId(value === "__root__" ? null : value)}>
+            <SelectTrigger>
+              <SelectValue placeholder="Куда переместить" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__root__">Корень</SelectItem>
+              {folderItems.map((folder) => (
+                <SelectItem key={folder.id} value={folder.id}>
+                  {folder.title}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setAddOpen(false)} disabled={submitting}>
-              Отмена
-            </Button>
-            <Button onClick={handleCreateResource} disabled={submitting}>
-              {submitting ? "Создание..." : "Создать"}
+            <Button variant="outline" onClick={() => setMoveOpen(false)}>Отмена</Button>
+            <Button
+              onClick={async () => {
+                if (!moveItemId) return
+                await moveItem(moveItemId, moveTargetParentId)
+                await refreshProject()
+                setMoveOpen(false)
+              }}
+            >
+              Переместить
             </Button>
           </DialogFooter>
         </DialogContent>

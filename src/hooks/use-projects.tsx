@@ -149,6 +149,66 @@ export function useProjects(teamLogin?: string, options?: { autoLoad?: boolean }
     return null
   }, [teamLogin])
 
+  const createFolder = useCallback(async (projectId: string, payload: { name: string; description?: string; parent_id?: string | null }) => {
+    if (!teamLogin) return null
+
+    const { data } = await api.post(
+      `/main/project/createFolder/?team_login=${teamLogin}`,
+      toFormBody({ project_id: projectId, ...payload }),
+      { headers: { "Content-Type": "application/x-www-form-urlencoded" } }
+    )
+
+    if (data.status && data.data) {
+      return data.data as ProjectItem
+    }
+
+    return null
+  }, [teamLogin])
+
+  const renameItem = useCallback(async (itemId: string, name: string) => {
+    if (!teamLogin) return null
+
+    const { data } = await api.post(
+      `/main/project/renameItem/?team_login=${teamLogin}`,
+      toFormBody({ item_id: itemId, name }),
+      { headers: { "Content-Type": "application/x-www-form-urlencoded" } }
+    )
+
+    if (data.status && data.data) {
+      return data.data as ProjectItem
+    }
+
+    return null
+  }, [teamLogin])
+
+  const moveItem = useCallback(async (itemId: string, parentId?: string | null) => {
+    if (!teamLogin) return null
+
+    const { data } = await api.post(
+      `/main/project/moveItem/?team_login=${teamLogin}`,
+      toFormBody({ item_id: itemId, parent_id: parentId ?? "" }),
+      { headers: { "Content-Type": "application/x-www-form-urlencoded" } }
+    )
+
+    if (data.status && data.data) {
+      return data.data as ProjectItem
+    }
+
+    return null
+  }, [teamLogin])
+
+  const deleteItem = useCallback(async (itemId: string) => {
+    if (!teamLogin) return false
+
+    const { data } = await api.post(
+      `/main/project/deleteItem/?team_login=${teamLogin}`,
+      toFormBody({ item_id: itemId }),
+      { headers: { "Content-Type": "application/x-www-form-urlencoded" } }
+    )
+
+    return data.status === true
+  }, [teamLogin])
+
   const updateProject = useCallback(async (projectId: string, payload: { name?: string; description?: string; img_url?: string; is_archived?: boolean }) => {
     if (!teamLogin) {
       return null
@@ -198,7 +258,19 @@ export function useProjects(teamLogin?: string, options?: { autoLoad?: boolean }
   }, [refreshProjects, autoLoad])
 
   return useMemo(
-    () => ({ projects, loading, refreshProjects, getProject, createProject, updateProject, deleteProject }),
-    [projects, loading, refreshProjects, getProject, createProject, updateProject, deleteProject]
+    () => ({
+      projects,
+      loading,
+      refreshProjects,
+      getProject,
+      createProject,
+      updateProject,
+      deleteProject,
+      createFolder,
+      renameItem,
+      moveItem,
+      deleteItem,
+    }),
+    [projects, loading, refreshProjects, getProject, createProject, updateProject, deleteProject, createFolder, renameItem, moveItem, deleteItem]
   )
 }

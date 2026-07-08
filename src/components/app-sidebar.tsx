@@ -1,7 +1,9 @@
 "use client"
 
 import * as React from "react"
+import { useEffect, useMemo, useState } from "react"
 import type { LucideIcon } from "lucide-react"
+import { useLocation, useParams } from "react-router-dom"
 
 import {
   LayoutDashboard,
@@ -18,6 +20,7 @@ import { NavUser } from "@/components/nav-user"
 import { NavFooter } from "@/components/nav-footer"
 import { TeamSwitcher } from "@/components/team-switcher"
 import { useTeams } from "@/hooks/use-teams"
+import { useProjects, type ProjectDetail } from "@/hooks/use-projects"
 import {
   Sidebar,
   SidebarContent,
@@ -98,6 +101,35 @@ const navMainBase: NavItem[] = [
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const { isAdmin } = useTeams()
+  const { teamLogin, projectId: routeProjectId } = useParams()
+  const location = useLocation()
+  const { getProject } = useProjects(teamLogin, { autoLoad: false })
+  const [activeProject, setActiveProject] = useState<ProjectDetail | null>(null)
+
+  const sidebarProjectId = useMemo(() => {
+    if (routeProjectId) return routeProjectId
+    const searchParams = new URLSearchParams(location.search)
+    return searchParams.get("project_id") || null
+  }, [location.search, routeProjectId])
+
+  useEffect(() => {
+    let cancelled = false
+
+    if (!sidebarProjectId) {
+      setActiveProject(null)
+      return
+    }
+
+    getProject(sidebarProjectId).then((project) => {
+      if (!cancelled) {
+        setActiveProject(project)
+      }
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [sidebarProjectId, getProject])
 
   const navMain = navMainBase
     .filter((item, idx) => {
@@ -111,13 +143,34 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       return true
     }) as NavItem[]
 
+  const navWithProject = navMain.map((item) => {
+    if (item.title !== "Проекты" || !activeProject) {
+      return item
+    }
+
+    return {
+      ...item,
+      isActive: true,
+      items: [
+        {
+          title: activeProject.name,
+          url: `projects/${activeProject.id}`,
+        },
+        ...activeProject.task_lists.map((list) => ({
+          title: list.name,
+          url: `projects/${activeProject.id}/tasks/${list.id}`,
+        })),
+      ],
+    }
+  })
+
   return (
     <Sidebar collapsible="icon" {...props}>
       <SidebarHeader>
         <TeamSwitcher />
       </SidebarHeader>
       <SidebarContent>
-        <NavMain items={navMain} />
+        <NavMain items={navWithProject} />
         <div className="mt-auto">
           <NavFooter />
         </div>

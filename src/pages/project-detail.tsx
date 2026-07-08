@@ -241,7 +241,7 @@ export function ProjectPage() {
 
       await refreshProject()
       resetDialog()
-      navigate(`/teams/${teamLogin}/tasks/${data.data.id}?project_id=${projectId}`)
+      navigate(`/teams/${teamLogin}/projects/${projectId}/tasks/${data.data.id}`)
     } catch (error) {
       console.error("Failed to create project resource:", error)
       setFormError("Не удалось создать объект")
@@ -370,7 +370,7 @@ export function ProjectPage() {
                     <button
                       key={item.id}
                       type="button"
-                      onClick={() => navigate(`/teams/${teamLogin}/tasks/${item.id}?project_id=${projectId}`)}
+                      onClick={() => navigate(`/teams/${teamLogin}/projects/${projectId}/tasks/${item.id}`)}
                       className="flex items-center gap-4 rounded-2xl border p-4 text-left transition-colors hover:bg-muted/40"
                     >
                       <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react"
+import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { useNavigate, useParams } from "react-router-dom"
 import {
   Bot,
@@ -140,6 +140,176 @@ function extractQuickReplies(messages: AiChatMessage[]): string[] {
     }
   }
   return []
+}
+
+function renderInlineMarkdown(text: string): ReactNode[] {
+  const nodes: ReactNode[] = []
+  let index = 0
+  let key = 0
+
+  const pushText = (value: string) => {
+    if (value) {
+      nodes.push(<Fragment key={key++}>{value}</Fragment>)
+    }
+  }
+
+  while (index < text.length) {
+    const rest = text.slice(index)
+
+    const linkMatch = rest.match(/^\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/)
+    if (linkMatch) {
+      nodes.push(
+        <a
+          key={key++}
+          href={linkMatch[2]}
+          target="_blank"
+          rel="noreferrer"
+          className="text-primary underline underline-offset-2"
+        >
+          {linkMatch[1]}
+        </a>
+      )
+      index += linkMatch[0].length
+      continue
+    }
+
+    const boldMatch = rest.match(/^\*\*([^*]+)\*\*/)
+    if (boldMatch) {
+      nodes.push(<strong key={key++} className="font-semibold">{boldMatch[1]}</strong>)
+      index += boldMatch[0].length
+      continue
+    }
+
+    const codeMatch = rest.match(/^`([^`]+)`/)
+    if (codeMatch) {
+      nodes.push(
+        <code key={key++} className="rounded bg-muted px-1.5 py-0.5 font-mono text-[0.92em]">
+          {codeMatch[1]}
+        </code>
+      )
+      index += codeMatch[0].length
+      continue
+    }
+
+    const italicMatch = rest.match(/^\*([^*]+)\*/)
+    if (italicMatch) {
+      nodes.push(<em key={key++} className="italic">{italicMatch[1]}</em>)
+      index += italicMatch[0].length
+      continue
+    }
+
+    const nextSpecial = rest.search(/[\[`*]/)
+    if (nextSpecial === -1) {
+      pushText(rest)
+      break
+    }
+
+    pushText(rest.slice(0, nextSpecial))
+    index += nextSpecial
+  }
+
+  return nodes
+}
+
+function renderMarkdown(text: string): ReactNode[] {
+  const lines = text.replace(/\r/g, "").split("\n")
+  const blocks: ReactNode[] = []
+  let i = 0
+  let key = 0
+
+  while (i < lines.length) {
+    const line = lines[i]
+    const trimmed = line.trim()
+
+    if (!trimmed) {
+      blocks.push(<div key={key++} className="h-2" />)
+      i += 1
+      continue
+    }
+
+    const codeFence = trimmed.startsWith("```")
+    if (codeFence) {
+      const codeLines: string[] = []
+      i += 1
+      while (i < lines.length && !lines[i].trim().startsWith("```")) {
+        codeLines.push(lines[i])
+        i += 1
+      }
+      if (i < lines.length) i += 1
+      blocks.push(
+        <pre key={key++} className="overflow-x-auto rounded-2xl bg-muted p-3 text-xs leading-6">
+          <code>{codeLines.join("\n")}</code>
+        </pre>
+      )
+      continue
+    }
+
+    const heading = trimmed.match(/^(#{1,3})\s+(.*)$/)
+    if (heading) {
+      const level = heading[1].length
+      const textValue = heading[2]
+      const HeadingTag = level === 1 ? "h1" : level === 2 ? "h2" : "h3"
+      const headingClass = level === 1 ? "text-lg font-semibold" : level === 2 ? "text-base font-semibold" : "text-sm font-semibold"
+      blocks.push(
+        <HeadingTag key={key++} className={headingClass}>
+          {renderInlineMarkdown(textValue)}
+        </HeadingTag>
+      )
+      i += 1
+      continue
+    }
+
+    if (/^[-*]\s+/.test(trimmed)) {
+      const items: string[] = []
+      while (i < lines.length && /^[-*]\s+/.test(lines[i].trim())) {
+        items.push(lines[i].trim().replace(/^[-*]\s+/, ""))
+        i += 1
+      }
+      blocks.push(
+        <ul key={key++} className="list-disc space-y-1 pl-5">
+          {items.map((item, itemIndex) => (
+            <li key={itemIndex}>{renderInlineMarkdown(item)}</li>
+          ))}
+        </ul>
+      )
+      continue
+    }
+
+    if (/^\d+\.\s+/.test(trimmed)) {
+      const items: string[] = []
+      while (i < lines.length && /^\d+\.\s+/.test(lines[i].trim())) {
+        items.push(lines[i].trim().replace(/^\d+\.\s+/, ""))
+        i += 1
+      }
+      blocks.push(
+        <ol key={key++} className="list-decimal space-y-1 pl-5">
+          {items.map((item, itemIndex) => (
+            <li key={itemIndex}>{renderInlineMarkdown(item)}</li>
+          ))}
+        </ol>
+      )
+      continue
+    }
+
+    if (/^>\s+/.test(trimmed)) {
+      blocks.push(
+        <blockquote key={key++} className="border-l-2 border-border pl-3 text-muted-foreground">
+          {renderInlineMarkdown(trimmed.replace(/^>\s+/, ""))}
+        </blockquote>
+      )
+      i += 1
+      continue
+    }
+
+    blocks.push(
+      <p key={key++} className="leading-6">
+        {renderInlineMarkdown(line)}
+      </p>
+    )
+    i += 1
+  }
+
+  return blocks
 }
 
 export function AiAgentPage() {
@@ -695,11 +865,13 @@ function MessageBubble({ message }: { message: AiChatMessage }) {
   const meta = message.meta as { kind?: string; actions?: AiAgentAction[] } | null
   const isPreview = meta?.kind === "preview"
   const parsed = isUser ? null : tryParseAssistantPayload(message.content)
-  const displayContent = parsed?.message?.trim()
-    ? parsed.message
-    : parsed
-      ? message.content.replace(extractJsonPayload(message.content) || "", "").trim()
-      : message.content
+  const displayContent = isUser
+    ? message.content
+    : parsed?.message?.trim()
+      ? parsed.message
+      : extractJsonPayload(message.content)
+        ? ""
+        : message.content
   const actions = !isUser && Array.isArray(meta?.actions) ? meta.actions : []
 
   return (
@@ -715,7 +887,7 @@ function MessageBubble({ message }: { message: AiChatMessage }) {
         )}
       >
         {isPreview && <div className="mb-2 text-xs font-semibold text-amber-700 dark:text-amber-400">План агента</div>}
-        <div className="whitespace-pre-wrap leading-6">{displayContent}</div>
+        <div className="space-y-2 leading-6">{renderMarkdown(displayContent)}</div>
         {actions.length > 0 && (
           <div className="mt-3 border-t border-border/60 pt-3">
             <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">

@@ -1,7 +1,8 @@
 import { useState, useCallback, useEffect, useRef } from "react"
-import { useParams, Link, useSearchParams } from "react-router-dom"
+import { useNavigate, useParams, Link, useSearchParams } from "react-router-dom"
 import { ChevronRight, Plus, LayoutGrid, Loader2, Archive, Trash2, Settings, Pencil, ListTodo, Table } from "lucide-react"
 import { useTaskLists } from "@/hooks/use-task-lists"
+import { useProjects } from "@/hooks/use-projects"
 import { api } from "@/lib/api"
 import type { TaskColumn } from "@/types/task"
 import { COLUMN_COLORS } from "@/types/task"
@@ -36,9 +37,11 @@ const TEMPLATE_COLS = [
 ]
 
 export function TaskBoardPage() {
-  const { teamLogin, listId } = useParams()
+  const navigate = useNavigate()
+  const { teamLogin, listId, projectId: routeProjectId } = useParams()
   const [searchParams] = useSearchParams()
-  const projectId = searchParams.get("project_id")
+  const projectId = routeProjectId ?? searchParams.get("project_id")
+  const { getProject } = useProjects(teamLogin, { autoLoad: false })
   const {
     getListInfo,
     updateListColsSort,
@@ -64,6 +67,7 @@ export function TaskBoardPage() {
   const [listInfo, setListInfo] = useState<{ id: string; name: string; description: string; view_type: string } | null>(null)
   const [columns, setColumns] = useState<TaskColumn[]>([])
   const [loading, setLoading] = useState(true)
+  const [projectName, setProjectName] = useState("")
 
   const [creatingColumn, setCreatingColumn] = useState(false)
   const [newColumnName, setNewColumnName] = useState("")
@@ -110,6 +114,25 @@ export function TaskBoardPage() {
       setLoading(false)
     })
   }, [listId, getListInfo, fetchTasks])
+
+  useEffect(() => {
+    let cancelled = false
+
+    if (!projectId) {
+      setProjectName("")
+      return
+    }
+
+    getProject(projectId).then((project) => {
+      if (!cancelled) {
+        setProjectName(project?.name || "")
+      }
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [projectId, getProject])
 
   // Update title when listInfo changes
   useEffect(() => {
@@ -359,19 +382,77 @@ export function TaskBoardPage() {
     )
   }
 
+  if (!listInfo) {
+    return (
+      <div className="flex flex-col gap-4 p-4 md:p-6">
+        <div className="flex shrink-0 items-center gap-2 border-b px-4 py-2 lg:px-6">
+          {projectId ? (
+            <>
+              <Link to={`/teams/${teamLogin}/projects`} className="text-sm text-muted-foreground hover:text-foreground">
+                Проекты
+              </Link>
+              <ChevronRight className="size-4 text-muted-foreground" />
+              <Link
+                to={`/teams/${teamLogin}/projects/${projectId}`}
+                className="text-sm text-muted-foreground hover:text-foreground"
+              >
+                {projectName || "Проект"}
+              </Link>
+              <ChevronRight className="size-4 text-muted-foreground" />
+            </>
+          ) : (
+            <>
+              <Link to={`/teams/${teamLogin}/tasks`} className="text-sm text-muted-foreground hover:text-foreground">
+                Задачи
+              </Link>
+              <ChevronRight className="size-4 text-muted-foreground" />
+            </>
+          )}
+          <span className="text-sm text-muted-foreground">Список не найден</span>
+        </div>
+        <div className="rounded-2xl border p-8 text-center">
+          <p className="font-medium">Список задач не найден или недоступен</p>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Проверьте, что этот список действительно существует в выбранном проекте.
+          </p>
+          {projectId ? (
+            <Button className="mt-4" onClick={() => navigate(`/teams/${teamLogin}/projects/${projectId}`)}>
+              Вернуться к проекту
+            </Button>
+          ) : (
+            <Button className="mt-4" onClick={() => navigate(`/teams/${teamLogin}/tasks`)}>
+              Вернуться к спискам
+            </Button>
+          )}
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="flex flex-col overflow-hidden">
       {/* Breadcrumbs */}
       <div className="flex shrink-0 items-center gap-2 border-b px-4 py-2 lg:px-6">
-        <Link to={`/teams/${teamLogin}/tasks`} className="text-sm text-muted-foreground hover:text-foreground">
-          Задачи
-        </Link>
-        <ChevronRight className="size-4 text-muted-foreground" />
-        {listInfo ? (
-          <span className="text-sm font-medium">{listInfo.name}</span>
+        {projectId ? (
+          <>
+            <Link to={`/teams/${teamLogin}/projects`} className="text-sm text-muted-foreground hover:text-foreground">
+              Проекты
+            </Link>
+            <ChevronRight className="size-4 text-muted-foreground" />
+            <Link to={`/teams/${teamLogin}/projects/${projectId}`} className="text-sm text-muted-foreground hover:text-foreground">
+              {projectName || "Проект"}
+            </Link>
+            <ChevronRight className="size-4 text-muted-foreground" />
+          </>
         ) : (
-          <span className="text-sm text-muted-foreground">Загрузка...</span>
+          <>
+            <Link to={`/teams/${teamLogin}/tasks`} className="text-sm text-muted-foreground hover:text-foreground">
+              Задачи
+            </Link>
+            <ChevronRight className="size-4 text-muted-foreground" />
+          </>
         )}
+        <span className="text-sm font-medium">{listInfo.name}</span>
       </div>
 
       {/* Board header with Add column button */}

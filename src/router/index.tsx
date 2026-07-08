@@ -89,6 +89,10 @@ const routes: RouteObject[] = [
         element: <TaskBoardPage />,
       },
       {
+        path: 'projects/:projectId/tasks/:listId',
+        element: <TaskBoardPage />,
+      },
+      {
         path: 'projects',
         element: <ProjectsPage />,
       },

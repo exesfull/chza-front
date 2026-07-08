@@ -33,7 +33,13 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { cn } from "@/lib/utils"
-import { useAiChats, type AiChatMessage, type AiChatSummary, type AiChatPayload } from "@/hooks/use-ai-chats"
+import {
+  useAiChats,
+  type AiChatMessage,
+  type AiChatSummary,
+  type AiChatPayload,
+  type AiAgentAction,
+} from "@/hooks/use-ai-chats"
 
 function formatChatTime(dateStr: string | null): string {
   if (!dateStr) return ""
@@ -53,6 +59,17 @@ function formatChatTime(dateStr: string | null): string {
 function previewText(text: string | null | undefined) {
   if (!text) return "Пустой чат"
   return text.length > 72 ? `${text.slice(0, 72)}...` : text
+}
+
+function extractQuickReplies(messages: AiChatMessage[]): string[] {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const message = messages[i]
+    if (message.role !== "assistant") continue
+    const meta = message.meta as { quick_replies?: unknown; kind?: string } | null
+    if (!meta || !Array.isArray(meta.quick_replies) || meta.quick_replies.length === 0) continue
+    return meta.quick_replies.filter((item): item is string => typeof item === "string" && item.trim() !== "")
+  }
+  return []
 }
 
 export function AiAgentPage() {
@@ -83,6 +100,8 @@ export function AiAgentPage() {
   const [publicConfirmOpen, setPublicConfirmOpen] = useState(false)
   const [publicTargetState, setPublicTargetState] = useState(false)
   const [chatSearch, setChatSearch] = useState("")
+  const [agentActions, setAgentActions] = useState<AiAgentAction[]>([])
+  const [quickReplies, setQuickReplies] = useState<string[]>([])
   const draftTimerRef = useRef<number | null>(null)
   const currentUpdatedAtRef = useRef<string | null>(null)
 
@@ -104,10 +123,14 @@ export function AiAgentPage() {
       setRenameValue(payload.chat.title)
       currentUpdatedAtRef.current = payload.chat.updated_at
       setPageError("")
+      setAgentActions([])
+      setQuickReplies(extractQuickReplies(payload.messages))
     } else {
       setActiveChat(null)
       setDraft("")
       setRenameValue("")
+      setAgentActions([])
+      setQuickReplies([])
       setPageError("Чат не найден или недоступен")
     }
     setLoadingChat(false)
@@ -137,6 +160,8 @@ export function AiAgentPage() {
         setActiveChat(null)
         setDraft("")
         setRenameValue("")
+        setAgentActions([])
+        setQuickReplies([])
         setLoadingChat(false)
       }
       return
@@ -164,6 +189,7 @@ export function AiAgentPage() {
         setDraft(fresh.chat.draft_text || "")
         setRenameValue(fresh.chat.title)
         currentUpdatedAtRef.current = fresh.chat.updated_at
+        setQuickReplies(extractQuickReplies(fresh.messages))
         setPageError("")
         await refreshChats()
       }
@@ -193,13 +219,15 @@ export function AiAgentPage() {
     const items = await refreshChats()
     const targetId = created?.id || items[0]?.id
     if (targetId && teamLogin) {
+      setAgentActions([])
+      setQuickReplies([])
       navigate(`/teams/${teamLogin}/aiagent/${targetId}`)
     }
   }
 
-  const handleSend = async () => {
+  const handleSend = async (overrideText?: string) => {
     if (!activeChatId || sending || loadingChat) return
-    const content = draft.trim()
+    const content = (overrideText ?? draft).trim()
     if (!content) return
 
     if (draftTimerRef.current) {
@@ -207,6 +235,7 @@ export function AiAgentPage() {
       draftTimerRef.current = null
     }
 
+    setQuickReplies([])
     setSending(true)
     setPageError("")
 
@@ -216,6 +245,8 @@ export function AiAgentPage() {
       setDraft(result.chat.draft_text || "")
       setRenameValue(result.chat.title)
       currentUpdatedAtRef.current = result.chat.updated_at
+      setAgentActions(result.actions || [])
+      setQuickReplies((result.quick_replies || []).filter((item) => item.trim() !== ""))
       await refreshChats()
     } else {
       setPageError("Не удалось отправить сообщение. Попробуйте ещё раз.")
@@ -249,6 +280,8 @@ export function AiAgentPage() {
       const items = await refreshChats()
       setDeleteConfirmOpen(false)
       setSettingsOpen(false)
+      setAgentActions([])
+      setQuickReplies([])
       if (items.length > 0 && teamLogin) {
         navigate(`/teams/${teamLogin}/aiagent/${items[0].id}`, { replace: true })
       } else if (teamLogin) {
@@ -421,6 +454,31 @@ export function AiAgentPage() {
             </div>
           ) : activeChat ? (
             <div className="mx-auto flex max-w-4xl flex-col gap-4">
+              {agentActions.length > 0 && (
+                <div className="rounded-2xl border bg-card p-4">
+                  <div className="mb-3 text-sm font-semibold">Что делает агент</div>
+                  <div className="flex flex-col gap-2">
+                    {agentActions.map((action, index) => (
+                      <div
+                        key={`${action.type}-${index}`}
+                        className={cn(
+                          "rounded-xl px-3 py-2 text-sm",
+                          action.type === "error"
+                            ? "bg-red-500/10 text-red-700 dark:text-red-400"
+                            : action.type === "success"
+                              ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
+                              : action.type === "preview"
+                                ? "bg-amber-500/10 text-amber-700 dark:text-amber-400"
+                                : "bg-muted text-muted-foreground"
+                        )}
+                      >
+                        {action.text}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {activeChat.messages.map((message) => (
                 <MessageBubble key={message.id} message={message} />
               ))}
@@ -431,13 +489,37 @@ export function AiAgentPage() {
                 </div>
               )}
             </div>
+          ) : chats.length === 0 ? (
+            <div className="flex h-full items-center justify-center">
+              <div className="max-w-2xl rounded-[2rem] border bg-card p-8 shadow-sm">
+                <div className="flex items-start gap-4">
+                  <div className="flex size-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                    <Bot className="size-6" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-2xl font-semibold">AI агент для команды</div>
+                    <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                      Здесь вы можете вести рабочие диалоги с агентом, поручать ему поиск по спискам задач,
+                      смотреть задачи, создавать и обновлять их, а также быстро продолжать диалог через кнопки-ответы.
+                    </p>
+                    <p className="mt-3 text-sm leading-6 text-muted-foreground">
+                      Создайте первый чат, чтобы задать агенту задачу или попросить его собрать информацию.
+                    </p>
+                    <Button className="mt-5" onClick={handleCreateChat}>
+                      <Plus className="mr-2 size-4" />
+                      Создать чат
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </div>
           ) : (
             <div className="flex h-full items-center justify-center">
               <div className="max-w-md rounded-3xl border bg-card p-8 text-center shadow-sm">
                 <Bot className="mx-auto mb-3 size-10 text-primary" />
-                <div className="text-lg font-semibold">Пустой чат</div>
+                <div className="text-lg font-semibold">Выберите чат</div>
                 <div className="mt-2 text-sm text-muted-foreground">
-                  Создайте новый диалог или выберите уже существующий слева.
+                  Слева показаны ваши чаты. Можно выбрать существующий или создать новый.
                 </div>
                 <Button className="mt-5" onClick={handleCreateChat}>
                   <Plus className="mr-2 size-4" />
@@ -450,6 +532,26 @@ export function AiAgentPage() {
 
         <div className="border-t bg-background/95 p-4">
           <div className="mx-auto flex max-w-4xl flex-col gap-3">
+            {quickReplies.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {quickReplies.map((reply) => (
+                  <Button
+                    key={reply}
+                    type="button"
+                    variant="outline"
+                    className="rounded-full"
+                      onClick={() => {
+                        setDraft(reply)
+                        void handleSend(reply)
+                      }}
+                    disabled={sending || loadingChat || !activeChatId}
+                  >
+                    {reply}
+                  </Button>
+                ))}
+              </div>
+            )}
+
             <Textarea
               value={draft}
               onChange={(e) => handleDraftChange(e.target.value)}
@@ -468,10 +570,8 @@ export function AiAgentPage() {
             {pageError && <div className="text-sm text-destructive">{pageError}</div>}
 
             <div className="flex items-center justify-between gap-3">
-              <div className="text-xs text-muted-foreground">
-                Draft сохраняется автоматически каждые 2 секунды
-              </div>
-              <Button onClick={handleSend} disabled={!activeChatId || sending || loadingChat || !draft.trim()} className="gap-2">
+              <div className="text-xs text-muted-foreground" />
+              <Button onClick={() => void handleSend()} disabled={!activeChatId || sending || loadingChat || !draft.trim()} className="gap-2">
                 {sending ? <LoaderCircle className="size-4 animate-spin" /> : <Send className="size-4" />}
                 Отправить
               </Button>
@@ -551,6 +651,8 @@ export function AiAgentPage() {
 
 function MessageBubble({ message }: { message: AiChatMessage }) {
   const isUser = message.role === "user"
+  const meta = message.meta as { kind?: string } | null
+  const isPreview = meta?.kind === "preview"
 
   return (
     <div className={cn("flex", isUser ? "justify-end" : "justify-start")}>
@@ -559,9 +661,12 @@ function MessageBubble({ message }: { message: AiChatMessage }) {
           "max-w-[80%] rounded-3xl px-4 py-3 text-sm shadow-sm",
           isUser
             ? "bg-primary text-primary-foreground"
-            : "bg-card text-card-foreground border"
+            : isPreview
+              ? "border border-amber-500/40 bg-amber-500/10 text-card-foreground"
+              : "bg-card text-card-foreground border"
         )}
       >
+        {isPreview && <div className="mb-2 text-xs font-semibold text-amber-700 dark:text-amber-400">План агента</div>}
         <div className="whitespace-pre-wrap leading-6">{message.content}</div>
       </div>
     </div>

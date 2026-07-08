@@ -40,6 +40,17 @@ export interface AiChatPayload {
   messages: AiChatMessage[]
 }
 
+export interface AiAgentAction {
+  type: string
+  text: string
+}
+
+export interface AiAgentSendResponse extends AiChatPayload {
+  actions: AiAgentAction[]
+  quick_replies: string[]
+  assistant_kind: string
+}
+
 function toFormBody(payload: Record<string, string | number | boolean | undefined | null>) {
   const form = new URLSearchParams()
   Object.entries(payload).forEach(([key, value]) => {
@@ -174,7 +185,7 @@ export function useAiChats(teamLogin?: string) {
     }
   }, [teamLogin])
 
-  const sendMessage = useCallback(async (chatId: string, content: string): Promise<AiChatPayload | null> => {
+  const sendMessage = useCallback(async (chatId: string, content: string): Promise<AiAgentSendResponse | null> => {
     if (!teamLogin) return null
 
     try {
@@ -185,7 +196,7 @@ export function useAiChats(teamLogin?: string) {
       )
 
       if (data.status && data.data?.chat) {
-        return data.data as AiChatPayload
+        return data.data as AiAgentSendResponse
       }
     } catch (error) {
       console.error("Failed to send AI message:", error)

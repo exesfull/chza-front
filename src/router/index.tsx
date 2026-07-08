@@ -14,6 +14,7 @@ import { LinksPage } from '@/pages/links'
 import { CalendarPage } from '@/pages/calendar'
 import { SettingsPage } from '@/pages/settings'
 import { HelpPage } from '@/pages/help'
+import { AiAgentPage } from '@/pages/aiagent'
 import { ManagementGeneralPage } from '@/pages/management-general'
 import { ManagementMembersPage } from '@/pages/management-members'
 import { NotFoundPage } from '@/pages/not-found'
@@ -110,6 +111,14 @@ const routes: RouteObject[] = [
       {
         path: 'calendar',
         element: <CalendarPage />,
+      },
+      {
+        path: 'aiagent',
+        element: <AiAgentPage />,
+      },
+      {
+        path: 'aiagent/:chatId',
+        element: <AiAgentPage />,
       },
       {
         path: 'management/general',

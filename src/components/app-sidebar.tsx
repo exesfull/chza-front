@@ -9,6 +9,7 @@ import {
   ListTodo,
   Link2,
   CalendarDays,
+  Bot,
   Shield,
 } from "lucide-react"
 
@@ -62,6 +63,15 @@ const navMainBase: NavItem[] = [
     title: "Календарь",
     url: "calendar",
     icon: CalendarDays,
+  },
+  {
+    title: "separator",
+    url: "",
+  },
+  {
+    title: "AI агент",
+    url: "aiagent",
+    icon: Bot,
   },
   {
     title: "separator",

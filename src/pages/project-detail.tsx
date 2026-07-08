@@ -33,6 +33,7 @@ type ProjectCreateType = "folder" | "task_list" | "link" | "board" | "calendar"
 
 interface ProjectGridItem {
   id: string
+  project_item_id?: string
   type: ProjectCreateType
   title: string
   description: string | null
@@ -70,7 +71,8 @@ function flattenProjectItems(items: ProjectGridItem[], depth = 0): ProjectGridIt
 
 function mapApiProjectItems(items: NonNullable<ProjectDetail["items"]>): ProjectGridItem[] {
   return items.map((item) => ({
-    id: item.id,
+    id: item.object_id || item.id,
+    project_item_id: item.id,
     type: item.object_type as ProjectCreateType,
     title: item.name,
     description: item.description,
@@ -144,7 +146,7 @@ export function ProjectPage() {
 
   const projectItems = useMemo(() => {
     const itemsFromApi = project?.items ? mapApiProjectItems(project.items) : []
-    const fallbackItems: ProjectGridItem[] = itemsFromApi.length > 0 ? [] : [
+    const fallbackItems: ProjectGridItem[] = [
       ...(project?.task_lists || []).map((item) => ({
         id: item.id,
         type: "task_list" as const,
@@ -174,7 +176,10 @@ export function ProjectPage() {
       })),
     ]
 
-    const source = itemsFromApi.length > 0 ? flattenProjectItems(itemsFromApi) : flattenProjectItems(fallbackItems)
+    const source = flattenProjectItems([
+      ...itemsFromApi,
+      ...fallbackItems.filter((fallbackItem) => !itemsFromApi.some((item) => item.type === fallbackItem.type && item.id === fallbackItem.id)),
+    ])
     const filtered = source.filter((item) => {
       const haystack = `${item.title} ${item.description || ""}`.toLowerCase()
       return haystack.includes(boardSearch.toLowerCase())
@@ -397,9 +402,9 @@ export function ProjectPage() {
                 )}
               </div>
               <h1 className="mt-1 text-2xl font-bold">{project.name}</h1>
-              <p className="max-w-2xl text-sm text-muted-foreground">
-                {project.description || "Описание проекта не указано"}
-              </p>
+              {project.description ? (
+                <p className="max-w-2xl text-sm text-muted-foreground">{project.description}</p>
+              ) : null}
             </div>
           </div>
 
@@ -524,19 +529,33 @@ export function ProjectPage() {
                       {getItemKindLabel(item)}
                     </span>
                   </div>
-                  <div className="mt-3 min-w-0 flex-1">
+                    <div className="mt-3 min-w-0 flex-1">
                     <div className="truncate font-medium">{item.title}</div>
-                    <div className="mt-1 line-clamp-2 text-xs text-muted-foreground">
-                      {item.description || "Без описания"}
+                    {item.description ? (
+                      <div className="mt-1 line-clamp-2 text-xs text-muted-foreground">
+                        {item.description}
+                      </div>
+                    ) : null}
                     </div>
-                  </div>
-                  <div className="mt-3 flex items-center justify-between text-xs text-muted-foreground">
+                  <div className="mt-3 flex items-center justify-between gap-2 text-xs text-muted-foreground">
                     {item.type === "folder" ? (
                       <span>{item.children.length} внутри</span>
                     ) : (
                       <span className="truncate">
                         {item.type === "link" ? "Ссылка" : "Открыть"}
                       </span>
+                    )}
+                    {item.type === "link" && getItemLink(item) && (
+                      <button
+                        type="button"
+                        className="rounded-full border px-3 py-1 text-[11px] font-medium hover:bg-muted"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          window.open(getItemLink(item), "_blank", "noreferrer")
+                        }}
+                      >
+                        Перейти
+                      </button>
                     )}
                     <span>{formatDate(item.updated_at)}</span>
                   </div>
@@ -593,7 +612,7 @@ export function ProjectPage() {
               <button
                 className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm hover:bg-muted"
                 onClick={() => {
-                  setRenameItemId(currentItem.id)
+                  setRenameItemId(currentItem.project_item_id || currentItem.id)
                   setRenameValue(currentItem.title)
                   setRenameOpen(true)
                   setContextMenu(null)
@@ -605,7 +624,7 @@ export function ProjectPage() {
               <button
                 className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm hover:bg-muted"
                 onClick={() => {
-                  setMoveItemId(currentItem.id)
+                  setMoveItemId(currentItem.project_item_id || currentItem.id)
                   setMoveTargetParentId(currentItem.parent_id)
                   setMoveOpen(true)
                   setContextMenu(null)
@@ -618,7 +637,7 @@ export function ProjectPage() {
                 className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-destructive hover:bg-destructive/10"
                 onClick={async () => {
                   if (window.confirm("Вы точно уверены?")) {
-                    await deleteItem(currentItem.id)
+                    await deleteItem(currentItem.project_item_id || currentItem.id)
                     await refreshProject()
                   }
                   setContextMenu(null)

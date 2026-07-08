@@ -35,6 +35,7 @@ interface NavItem {
   url: string
   icon?: LucideIcon
   isActive?: boolean
+  defaultOpen?: boolean
   adminOnly?: boolean
   items?: {
     title: string
@@ -144,6 +145,9 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       return true
     }) as NavItem[]
 
+  const isProjectsPage =
+    location.pathname === `/teams/${teamLogin}/projects` ||
+    location.pathname === `/teams/${teamLogin}/projects/`
   const hasBoardRoute = Boolean(boardId || location.pathname.includes("/boards/"))
   const hasListRoute = Boolean(listId || location.pathname.includes("/tasks/"))
   const currentObject = activeProject
@@ -167,7 +171,8 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         title: activeProject.name,
         url: `projects/${activeProject.id}`,
         icon: FolderKanban,
-        isActive: Boolean(location.pathname.includes(`/projects/${activeProject.id}`)),
+        isActive: false,
+        defaultOpen: Boolean(location.pathname.includes(`/projects/${activeProject.id}`)),
         items: [
           {
             title: "Главная",
@@ -181,7 +186,13 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 
   const navWithProject = navMain.flatMap((item) => {
     if (item.title === "Проекты" && activeProjectItem) {
-      return [item, activeProjectItem]
+      return [
+        {
+          ...item,
+          isActive: isProjectsPage,
+        },
+        activeProjectItem,
+      ]
     }
     return [item]
   })

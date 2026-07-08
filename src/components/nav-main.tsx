@@ -29,6 +29,7 @@ export function NavMain({
     url: string
     icon?: LucideIcon
     isActive?: boolean
+    defaultOpen?: boolean
     adminOnly?: boolean
     items?: {
       title: string
@@ -78,17 +79,17 @@ export function NavMain({
           item.title === "separator" ? (
             <div key="separator" className="my-2 border-t border-sidebar-border" />
           ) : item.items && item.items.length > 0 ? (
-            <Collapsible
+          <Collapsible
               key={item.title}
               asChild
-              defaultOpen={item.isActive}
+              defaultOpen={item.defaultOpen ?? item.isActive ?? isActivePath(item.url)}
               className="group/collapsible"
             >
               <SidebarMenuItem>
                 <CollapsibleTrigger asChild>
                   <SidebarMenuButton
                     tooltip={item.title}
-                    isActive={isActivePath(item.url)}
+                    isActive={item.isActive ?? isActivePath(item.url)}
                   >
                     {item.icon && <item.icon />}
                     <span>{item.title}</span>

@@ -13,6 +13,7 @@ import {
   CalendarDays,
   Bot,
   Shield,
+  SquareStack,
 } from "lucide-react"
 
 import { NavMain } from "@/components/nav-main"
@@ -101,7 +102,7 @@ const navMainBase: NavItem[] = [
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const { isAdmin } = useTeams()
-  const { teamLogin, projectId: routeProjectId } = useParams()
+  const { teamLogin, projectId: routeProjectId, boardId, listId } = useParams()
   const location = useLocation()
   const { getProject } = useProjects(teamLogin, { autoLoad: false })
   const [activeProject, setActiveProject] = useState<ProjectDetail | null>(null)
@@ -148,18 +149,44 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       return item
     }
 
+    const hasBoardRoute = Boolean(boardId || location.pathname.includes("/boards/"))
+    const hasListRoute = Boolean(listId || location.pathname.includes("/tasks/"))
+    const projectUrl = `projects/${activeProject.id}`
+    const objectItems = hasBoardRoute
+      ? (activeProject.boards || []).map((board) => ({
+          title: board.name,
+          url: `projects/${activeProject.id}/boards/${board.id}`,
+          icon: SquareStack,
+        }))
+      : hasListRoute
+        ? (activeProject.task_lists || []).map((list) => ({
+            title: list.name,
+            url: `projects/${activeProject.id}/tasks/${list.id}`,
+            icon: ListTodo,
+          }))
+        : [
+            ...(activeProject.task_lists || []).map((list) => ({
+              title: list.name,
+              url: `projects/${activeProject.id}/tasks/${list.id}`,
+              icon: ListTodo,
+            })),
+            ...(activeProject.boards || []).map((board) => ({
+              title: board.name,
+              url: `projects/${activeProject.id}/boards/${board.id}`,
+              icon: SquareStack,
+            })),
+          ]
+
     return {
       ...item,
       isActive: true,
       items: [
         {
           title: activeProject.name,
-          url: `projects/${activeProject.id}`,
+          url: projectUrl,
+          icon: FolderKanban,
         },
-        ...activeProject.task_lists.map((list) => ({
-          title: list.name,
-          url: `projects/${activeProject.id}/tasks/${list.id}`,
-        })),
+        ...objectItems,
       ],
     }
   })

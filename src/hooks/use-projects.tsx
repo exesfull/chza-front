@@ -43,9 +43,24 @@ export interface ProjectBoard {
 }
 
 export interface ProjectDetail extends ProjectInfo {
+  items?: ProjectItem[]
   task_lists: ProjectTaskList[]
   links: ProjectLink[]
   boards: ProjectBoard[]
+}
+
+export interface ProjectItem {
+  id: string
+  project_id: string
+  parent_id: string | null
+  object_type: "folder" | "task_list" | "link" | "board"
+  object_id: string | null
+  name: string
+  description: string | null
+  sort_order: number
+  created_at: string | null
+  updated_at: string | null
+  children?: ProjectItem[]
 }
 
 function toFormBody(payload: Record<string, string | number | boolean | undefined | null>): URLSearchParams {

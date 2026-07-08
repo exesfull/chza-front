@@ -10,6 +10,7 @@ export interface ProjectInfo {
   is_deleted: boolean
   task_lists_count: number
   links_count: number
+  boards_count: number
   created_at: string | null
   updated_at: string | null
 }
@@ -32,9 +33,19 @@ export interface ProjectLink {
   updated_at: string | null
 }
 
+export interface ProjectBoard {
+  id: string
+  name: string
+  description: string | null
+  img_url: string | null
+  objects_count: number
+  updated_at: string | null
+}
+
 export interface ProjectDetail extends ProjectInfo {
   task_lists: ProjectTaskList[]
   links: ProjectLink[]
+  boards: ProjectBoard[]
 }
 
 function toFormBody(payload: Record<string, string | number | boolean | undefined | null>): URLSearchParams {
@@ -51,6 +62,7 @@ function normalizeProject(project: ProjectInfo): ProjectInfo {
     ...project,
     task_lists_count: Number(project.task_lists_count ?? 0),
     links_count: Number(project.links_count ?? 0),
+    boards_count: Number(project.boards_count ?? 0),
   }
 }
 

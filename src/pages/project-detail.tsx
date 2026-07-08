@@ -25,6 +25,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { api } from "@/lib/api"
 import { useProjects, type ProjectDetail } from "@/hooks/use-projects"
+import { useBoards } from "@/hooks/use-boards"
 
 type ResourceType = "board" | "calendar" | "link"
 type BoardSort = "updated_desc" | "updated_asc" | "name_asc" | "name_desc"
@@ -46,10 +47,13 @@ export function ProjectPage() {
   const { teamLogin, projectId } = useParams()
   const navigate = useNavigate()
   const { getProject } = useProjects(teamLogin, { autoLoad: false })
+  const { createBoard } = useBoards(teamLogin)
   const [project, setProject] = useState<ProjectDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [boardSearch, setBoardSearch] = useState("")
   const [boardSort, setBoardSort] = useState<BoardSort>("updated_desc")
+  const [canvasSearch, setCanvasSearch] = useState("")
+  const [canvasSort, setCanvasSort] = useState<BoardSort>("updated_desc")
   const [addOpen, setAddOpen] = useState(false)
   const [resourceType, setResourceType] = useState<ResourceType>("board")
   const [boardName, setBoardName] = useState("")
@@ -59,6 +63,10 @@ export function ProjectPage() {
   const [linkComment, setLinkComment] = useState("")
   const [submitting, setSubmitting] = useState(false)
   const [formError, setFormError] = useState("")
+  const [boardCreateOpen, setBoardCreateOpen] = useState(false)
+  const [boardCreateName, setBoardCreateName] = useState("")
+  const [boardCreateDescription, setBoardCreateDescription] = useState("")
+  const [boardCreateSubmitting, setBoardCreateSubmitting] = useState(false)
 
   const refreshProject = async () => {
     if (!projectId) return
@@ -119,11 +127,63 @@ export function ProjectPage() {
   }, [project?.task_lists, boardSearch, boardSort])
 
   const links = project?.links ?? []
+  const canvasBoards = useMemo(() => {
+    const items = project?.boards ?? []
+    const filtered = items.filter((item) =>
+      `${item.name} ${item.description || ""}`.toLowerCase().includes(canvasSearch.toLowerCase())
+    )
+
+    const sorted = [...filtered]
+    switch (canvasSort) {
+      case "name_asc":
+        sorted.sort((a, b) => a.name.localeCompare(b.name, "ru"))
+        break
+      case "name_desc":
+        sorted.sort((a, b) => b.name.localeCompare(a.name, "ru"))
+        break
+      case "updated_asc":
+        sorted.sort((a, b) => new Date((a.updated_at || "").replace(" ", "T")).getTime() - new Date((b.updated_at || "").replace(" ", "T")).getTime())
+        break
+      default:
+        sorted.sort((a, b) => new Date((b.updated_at || "").replace(" ", "T")).getTime() - new Date((a.updated_at || "").replace(" ", "T")).getTime())
+        break
+    }
+
+    return sorted
+  }, [project?.boards, canvasSearch, canvasSort])
 
   const resetDialog = () => {
     setAddOpen(false)
     setFormError("")
     setSubmitting(false)
+  }
+
+  const handleCreateBoard = async () => {
+    if (!teamLogin || !projectId) return
+    if (!boardCreateName.trim() || boardCreateSubmitting) return
+
+    setBoardCreateSubmitting(true)
+    try {
+      const board = await createBoard(projectId, {
+        name: boardCreateName.trim(),
+        description: boardCreateDescription.trim(),
+      })
+
+      if (!board) {
+        throw new Error("board_create_failed")
+      }
+
+      await refreshProject()
+      setBoardCreateOpen(false)
+      setBoardCreateName("")
+      setBoardCreateDescription("")
+      navigate(`/teams/${teamLogin}/projects/${projectId}/boards/${board.id}`)
+    } catch (error) {
+      console.error("Failed to create board:", error)
+      setBoardCreateSubmitting(false)
+    } finally {
+      setBoardCreateSubmitting(false)
+    }
   }
 
   const handleCreateResource = async () => {
@@ -380,9 +440,114 @@ export function ProjectPage() {
         </div>
       </div>
 
+      <div className="rounded-2xl border bg-card p-5">
+        <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <h2 className="text-lg font-semibold">Доски</h2>
+            <p className="text-sm text-muted-foreground">{canvasBoards.length} элементов</p>
+          </div>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <div className="relative w-full sm:w-60">
+              <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={canvasSearch}
+                onChange={(e) => setCanvasSearch(e.target.value)}
+                placeholder="Поиск досок..."
+                className="pl-9"
+              />
+            </div>
+            <Select value={canvasSort} onValueChange={(value) => setCanvasSort(value as BoardSort)}>
+              <SelectTrigger className="w-full sm:w-56">
+                <SelectValue placeholder="Сортировка" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="updated_desc">
+                  <span className="flex items-center gap-2"><CalendarArrowDown className="size-4" /> Последние изменения</span>
+                </SelectItem>
+                <SelectItem value="updated_asc">
+                  <span className="flex items-center gap-2"><CalendarArrowUp className="size-4" /> Сначала старые</span>
+                </SelectItem>
+                <SelectItem value="name_asc">
+                  <span className="flex items-center gap-2"><ArrowUpAZ className="size-4" /> Название (А-Я)</span>
+                </SelectItem>
+                <SelectItem value="name_desc">
+                  <span className="flex items-center gap-2"><ArrowUpZA className="size-4" /> Название (Я-А)</span>
+                </SelectItem>
+              </SelectContent>
+            </Select>
+            <Button onClick={() => setBoardCreateOpen(true)}>
+              <Plus className="mr-2 size-4" />
+              Создать доску
+            </Button>
+          </div>
+        </div>
+
+        <div className="max-h-[420px] overflow-y-auto pr-1">
+          {canvasBoards.length > 0 ? (
+            <div className="grid gap-3">
+              {canvasBoards.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => navigate(`/teams/${teamLogin}/projects/${projectId}/boards/${item.id}`)}
+                  className="flex items-center gap-4 rounded-2xl border p-4 text-left transition-colors hover:bg-muted/40"
+                >
+                  <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                    {item.img_url ? (
+                      <img src={item.img_url} alt={item.name} className="h-full w-full rounded-xl object-cover" />
+                    ) : (
+                      <SquareStack className="size-5" />
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <span className="truncate font-medium">{item.name}</span>
+                    <p className="truncate text-sm text-muted-foreground">{item.description || "Без описания"}</p>
+                  </div>
+                  <div className="shrink-0 text-right text-xs text-muted-foreground">
+                    <div>{formatDate(item.updated_at)}</div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-dashed p-10 text-center text-muted-foreground">
+              <SquareStack className="mx-auto mb-3 size-10" />
+              <p>Пока нет досок</p>
+            </div>
+          )}
+        </div>
+      </div>
+
       <div className="rounded-2xl border bg-card p-5 text-sm text-muted-foreground">
         Обновлено: {formatDate(project.updated_at)}
       </div>
+
+      <Dialog open={boardCreateOpen} onOpenChange={setBoardCreateOpen}>
+        <DialogContent className="sm:max-w-[560px]">
+          <DialogHeader>
+            <DialogTitle>Создать доску</DialogTitle>
+            <DialogDescription>Создайте новый холст Excalidraw внутри этого проекта</DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-4 py-2">
+            <div className="flex flex-col gap-2">
+              <label className="text-sm font-medium">Название *</label>
+              <Input value={boardCreateName} onChange={(e) => setBoardCreateName(e.target.value)} placeholder="Название доски" autoFocus />
+            </div>
+            <div className="flex flex-col gap-2">
+              <label className="text-sm font-medium">Описание</label>
+              <Textarea value={boardCreateDescription} onChange={(e) => setBoardCreateDescription(e.target.value)} rows={3} placeholder="Необязательно" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBoardCreateOpen(false)} disabled={boardCreateSubmitting}>
+              Отмена
+            </Button>
+            <Button onClick={handleCreateBoard} disabled={boardCreateSubmitting}>
+              {boardCreateSubmitting ? "Создание..." : "Создать"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
         <DialogContent className="sm:max-w-[560px]">

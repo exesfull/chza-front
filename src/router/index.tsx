@@ -7,6 +7,7 @@ import { TeamDashboardPage } from '@/pages/team-dashboard'
 import { ProjectsPage } from '@/pages/projects'
 import { ProjectPage } from '@/pages/project-detail'
 import { ProjectSettingsPage } from '@/pages/project-settings'
+import { BoardPage } from '@/pages/board-detail'
 import { TasksPage } from '@/pages/tasks'
 import { TaskBoardPage } from '@/pages/task-board'
 import { LinksPage } from '@/pages/links'
@@ -97,6 +98,10 @@ const routes: RouteObject[] = [
       {
         path: 'projects/:projectId/settings',
         element: <ProjectSettingsPage />,
+      },
+      {
+        path: 'projects/:projectId/boards/:boardId',
+        element: <BoardPage />,
       },
       {
         path: 'links',

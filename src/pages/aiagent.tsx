@@ -61,11 +61,21 @@ function previewText(text: string | null | undefined) {
   return text.length > 72 ? `${text.slice(0, 72)}...` : text
 }
 
+function extractJsonPayload(content: string): string | null {
+  const raw = content.trim()
+  if (!raw) return null
+  const first = raw.indexOf("{")
+  const last = raw.lastIndexOf("}")
+  if (first < 0 || last <= first) return null
+  return raw.slice(first, last + 1)
+}
+
 function tryParseAssistantPayload(content: string): { message?: string; quick_replies?: unknown } | null {
   const raw = content.trim()
-  if (!raw.startsWith("{")) return null
+  const candidate = raw.startsWith("{") ? raw : extractJsonPayload(raw)
+  if (!candidate) return null
   try {
-    const parsed = JSON.parse(raw)
+    const parsed = JSON.parse(candidate)
     if (parsed && typeof parsed === "object") {
       return parsed as { message?: string; quick_replies?: unknown }
     }
@@ -673,7 +683,11 @@ function MessageBubble({ message }: { message: AiChatMessage }) {
   const meta = message.meta as { kind?: string } | null
   const isPreview = meta?.kind === "preview"
   const parsed = isUser ? null : tryParseAssistantPayload(message.content)
-  const displayContent = parsed?.message?.trim() ? parsed.message : message.content
+  const displayContent = parsed?.message?.trim()
+    ? parsed.message
+    : parsed
+      ? message.content.replace(extractJsonPayload(message.content) || "", "").trim()
+      : message.content
 
   return (
     <div className={cn("flex", isUser ? "justify-end" : "justify-start")}>

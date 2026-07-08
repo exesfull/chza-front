@@ -81,7 +81,6 @@ export function TeamsPage() {
   const [createOpen, setCreateOpen] = useState(false)
   const [teamName, setTeamName] = useState("")
   const [teamDesc, setTeamDesc] = useState("")
-  const [teamImg, setTeamImg] = useState("")
   const [creating, setCreating] = useState(false)
   const [createError, setCreateError] = useState("")
 
@@ -110,7 +109,6 @@ export function TeamsPage() {
       const body = new URLSearchParams()
       body.append("name", name)
       if (teamDesc.trim()) body.append("description", teamDesc.trim())
-      if (teamImg.trim()) body.append("img_url", teamImg.trim())
 
       const { data } = await api.post("/main/team/create/", body, {
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -124,7 +122,6 @@ export function TeamsPage() {
       setCreateOpen(false)
       setTeamName("")
       setTeamDesc("")
-      setTeamImg("")
       navigate(`/teams/${data.data.team.login}`)
     } catch (createTeamError) {
       console.error("Failed to create team:", createTeamError)
@@ -272,14 +269,6 @@ export function TeamsPage() {
                 value={teamDesc}
                 onChange={(e) => setTeamDesc(e.target.value)}
                 rows={3}
-              />
-            </div>
-            <div className="flex flex-col gap-2">
-              <label className="text-sm font-medium">Обложка</label>
-              <Input
-                placeholder="URL изображения"
-                value={teamImg}
-                onChange={(e) => setTeamImg(e.target.value)}
               />
             </div>
             {createError && <p className="text-sm text-destructive">{createError}</p>}

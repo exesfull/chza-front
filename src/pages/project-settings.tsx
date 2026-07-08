@@ -10,7 +10,7 @@ import { useProjects, type ProjectDetail } from "@/hooks/use-projects"
 export function ProjectSettingsPage() {
   const { teamLogin, projectId } = useParams()
   const navigate = useNavigate()
-  const { getProject, updateProject, deleteProject } = useProjects(teamLogin)
+  const { getProject, updateProject, deleteProject } = useProjects(teamLogin, { autoLoad: false })
   const [project, setProject] = useState<ProjectDetail | null>(null)
   const [name, setName] = useState("")
   const [description, setDescription] = useState("")

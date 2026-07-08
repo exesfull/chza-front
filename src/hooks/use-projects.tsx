@@ -54,9 +54,10 @@ function normalizeProject(project: ProjectInfo): ProjectInfo {
   }
 }
 
-export function useProjects(teamLogin?: string) {
+export function useProjects(teamLogin?: string, options?: { autoLoad?: boolean }) {
   const [projects, setProjects] = useState<ProjectInfo[]>([])
   const [loading, setLoading] = useState(true)
+  const autoLoad = options?.autoLoad ?? true
 
   const refreshProjects = useCallback(async () => {
     if (!teamLogin) {
@@ -161,8 +162,13 @@ export function useProjects(teamLogin?: string) {
   }, [teamLogin])
 
   useEffect(() => {
+    if (!autoLoad) {
+      setLoading(false)
+      return
+    }
+
     refreshProjects()
-  }, [refreshProjects])
+  }, [refreshProjects, autoLoad])
 
   return useMemo(
     () => ({ projects, loading, refreshProjects, getProject, createProject, updateProject, deleteProject }),

@@ -15,7 +15,7 @@ function formatDate(dateStr: string | null): string {
 export function ProjectPage() {
   const { teamLogin, projectId } = useParams()
   const navigate = useNavigate()
-  const { getProject } = useProjects(teamLogin)
+  const { getProject } = useProjects(teamLogin, { autoLoad: false })
   const [project, setProject] = useState<ProjectDetail | null>(null)
   const [loading, setLoading] = useState(true)
 

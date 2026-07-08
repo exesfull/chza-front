@@ -421,6 +421,30 @@ export function ProjectPage() {
             <div className="text-sm text-muted-foreground">
               {visibleItems.length} {visibleItems.length === 1 ? "объект" : visibleItems.length < 5 ? "объекта" : "объектов"}
             </div>
+            <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+              <button
+                type="button"
+                className="hover:text-foreground"
+                onClick={() => setCurrentFolderId(null)}
+              >
+                {project.name}
+              </button>
+              {currentFolder && (
+                <>
+                  <ChevronRight className="size-4" />
+                  <span className="font-medium text-foreground">{currentFolder.title}</span>
+                </>
+              )}
+              {currentFolderId && (
+                <button
+                  type="button"
+                  className="ml-2 rounded-full border px-3 py-1 text-xs hover:bg-muted"
+                  onClick={() => setCurrentFolderId(null)}
+                >
+                  В корень
+                </button>
+              )}
+            </div>
           </div>
           <div className="flex flex-col gap-2 sm:flex-row">
             <div className="relative w-full sm:w-80">
@@ -647,15 +671,17 @@ export function ProjectPage() {
       )}
 
       <Dialog open={createOpen} onOpenChange={(open) => (open ? setCreateOpen(true) : resetCreate())}>
-        <DialogContent className="sm:max-w-[640px]">
+        <DialogContent className={createType === "folder" ? "sm:max-w-[420px]" : "sm:max-w-[640px]"}>
           <DialogHeader>
             <DialogTitle>Создать объект</DialogTitle>
             <DialogDescription>
-              Сначала выберите тип карточки, потом задайте название и параметры.
+              {createType === "folder"
+                ? "Введите название папки."
+                : "Сначала выберите тип карточки, потом задайте название и параметры."}
             </DialogDescription>
           </DialogHeader>
 
-          {createStep === "choose" ? (
+          {createStep === "choose" && createType !== "folder" ? (
             <div className="grid gap-3 py-2 sm:grid-cols-2">
               {[
                 { type: "folder" as const, title: "Папка", icon: FolderPlus, description: "Группировка объектов" },
@@ -689,9 +715,6 @@ export function ProjectPage() {
             </div>
           ) : (
             <div className="flex flex-col gap-4 py-2">
-              <div className="rounded-2xl border bg-muted/20 p-3 text-sm">
-                <span className="font-medium">Тип:</span> {createType === "folder" ? "Папка" : createType === "task_list" ? "Список задач" : createType === "link" ? "Ссылка" : createType === "calendar" ? "Календарь" : "Доска"}
-              </div>
               <div className="flex flex-col gap-2">
                 <label className="text-sm font-medium">Название *</label>
                 <Input

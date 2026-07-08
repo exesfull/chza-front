@@ -179,10 +179,12 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       }
     : null
 
-  const navWithProject = [
-    ...navMain,
-    ...(activeProjectItem ? [activeProjectItem] : []),
-  ]
+  const navWithProject = navMain.flatMap((item) => {
+    if (item.title === "Проекты" && activeProjectItem) {
+      return [item, activeProjectItem]
+    }
+    return [item]
+  })
 
   return (
     <Sidebar collapsible="icon" {...props}>

@@ -170,7 +170,6 @@ export function AiAgentPage() {
   const [publicConfirmOpen, setPublicConfirmOpen] = useState(false)
   const [publicTargetState, setPublicTargetState] = useState(false)
   const [chatSearch, setChatSearch] = useState("")
-  const [agentActions, setAgentActions] = useState<AiAgentAction[]>([])
   const [quickReplies, setQuickReplies] = useState<string[]>([])
   const draftTimerRef = useRef<number | null>(null)
   const currentUpdatedAtRef = useRef<string | null>(null)
@@ -193,13 +192,11 @@ export function AiAgentPage() {
       setRenameValue(payload.chat.title)
       currentUpdatedAtRef.current = payload.chat.updated_at
       setPageError("")
-      setAgentActions([])
       setQuickReplies(extractQuickReplies(payload.messages))
     } else {
       setActiveChat(null)
       setDraft("")
       setRenameValue("")
-      setAgentActions([])
       setQuickReplies([])
       setPageError("Чат не найден или недоступен")
     }
@@ -230,7 +227,6 @@ export function AiAgentPage() {
         setActiveChat(null)
         setDraft("")
         setRenameValue("")
-        setAgentActions([])
         setQuickReplies([])
         setLoadingChat(false)
       }
@@ -289,7 +285,6 @@ export function AiAgentPage() {
     const items = await refreshChats()
     const targetId = created?.id || items[0]?.id
     if (targetId && teamLogin) {
-      setAgentActions([])
       setQuickReplies([])
       navigate(`/teams/${teamLogin}/aiagent/${targetId}`)
     }
@@ -299,6 +294,7 @@ export function AiAgentPage() {
     if (!activeChatId || sending || loadingChat) return
     const content = (overrideText ?? draft).trim()
     if (!content) return
+    const previousDraft = draft
 
     if (draftTimerRef.current) {
       window.clearTimeout(draftTimerRef.current)
@@ -308,6 +304,7 @@ export function AiAgentPage() {
     setQuickReplies([])
     setSending(true)
     setPageError("")
+    setDraft("")
 
     const result = await sendMessage(activeChatId, content)
     if (result) {
@@ -315,10 +312,10 @@ export function AiAgentPage() {
       setDraft(result.chat.draft_text || "")
       setRenameValue(result.chat.title)
       currentUpdatedAtRef.current = result.chat.updated_at
-      setAgentActions(result.actions || [])
       setQuickReplies((result.quick_replies || []).filter((item) => item.trim() !== ""))
       await refreshChats()
     } else {
+      setDraft(previousDraft)
       setPageError("Не удалось отправить сообщение. Попробуйте ещё раз.")
     }
 
@@ -350,7 +347,6 @@ export function AiAgentPage() {
       const items = await refreshChats()
       setDeleteConfirmOpen(false)
       setSettingsOpen(false)
-      setAgentActions([])
       setQuickReplies([])
       if (items.length > 0 && teamLogin) {
         navigate(`/teams/${teamLogin}/aiagent/${items[0].id}`, { replace: true })
@@ -527,34 +523,6 @@ export function AiAgentPage() {
               {activeChat.messages.map((message) => (
                 <MessageBubble key={message.id} message={message} />
               ))}
-              {agentActions.length > 0 && (
-                <div className="flex justify-start">
-                  <div className="max-w-[80%] rounded-3xl border bg-card px-4 py-3 text-sm shadow-sm">
-                    <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      Ход агента
-                    </div>
-                    <div className="flex flex-col gap-2">
-                      {agentActions.map((action, index) => (
-                        <div
-                          key={`${action.type}-${index}`}
-                          className={cn(
-                            "rounded-xl px-3 py-2 text-sm",
-                            action.type === "error"
-                              ? "bg-red-500/10 text-red-700 dark:text-red-400"
-                              : action.type === "success"
-                                ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
-                                : action.type === "preview"
-                                  ? "bg-amber-500/10 text-amber-700 dark:text-amber-400"
-                                  : "bg-muted text-muted-foreground"
-                          )}
-                        >
-                          {action.text}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              )}
               {sending && (
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <LoaderCircle className="size-4 animate-spin" />
@@ -724,7 +692,7 @@ export function AiAgentPage() {
 
 function MessageBubble({ message }: { message: AiChatMessage }) {
   const isUser = message.role === "user"
-  const meta = message.meta as { kind?: string } | null
+  const meta = message.meta as { kind?: string; actions?: AiAgentAction[] } | null
   const isPreview = meta?.kind === "preview"
   const parsed = isUser ? null : tryParseAssistantPayload(message.content)
   const displayContent = parsed?.message?.trim()
@@ -732,6 +700,7 @@ function MessageBubble({ message }: { message: AiChatMessage }) {
     : parsed
       ? message.content.replace(extractJsonPayload(message.content) || "", "").trim()
       : message.content
+  const actions = !isUser && Array.isArray(meta?.actions) ? meta.actions : []
 
   return (
     <div className={cn("flex", isUser ? "justify-end" : "justify-start")}>
@@ -747,6 +716,32 @@ function MessageBubble({ message }: { message: AiChatMessage }) {
       >
         {isPreview && <div className="mb-2 text-xs font-semibold text-amber-700 dark:text-amber-400">План агента</div>}
         <div className="whitespace-pre-wrap leading-6">{displayContent}</div>
+        {actions.length > 0 && (
+          <div className="mt-3 border-t border-border/60 pt-3">
+            <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+              Ход агента
+            </div>
+            <div className="flex flex-col gap-2">
+              {actions.map((action, index) => (
+                <div
+                  key={`${action.type}-${index}`}
+                  className={cn(
+                    "rounded-xl px-3 py-2 text-sm",
+                    action.type === "error"
+                      ? "bg-red-500/10 text-red-700 dark:text-red-400"
+                      : action.type === "success"
+                        ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
+                        : action.type === "preview"
+                          ? "bg-amber-500/10 text-amber-700 dark:text-amber-400"
+                          : "bg-muted text-muted-foreground"
+                  )}
+                >
+                  {action.text}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

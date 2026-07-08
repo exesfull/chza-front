@@ -343,6 +343,7 @@ export function AiAgentPage() {
   const [quickReplies, setQuickReplies] = useState<string[]>([])
   const draftTimerRef = useRef<number | null>(null)
   const currentUpdatedAtRef = useRef<string | null>(null)
+  const chatScrollEndRef = useRef<HTMLDivElement | null>(null)
 
   const activeChatId = chatId ?? activeChat?.chat.id ?? null
 
@@ -415,6 +416,10 @@ export function AiAgentPage() {
   }, [])
 
   useEffect(() => {
+    chatScrollEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" })
+  }, [activeChat?.messages.length, sending, quickReplies.length])
+
+  useEffect(() => {
     if (!activeChatId || sending || loadingChat) return
 
     const timer = window.setInterval(async () => {
@@ -465,6 +470,16 @@ export function AiAgentPage() {
     const content = (overrideText ?? draft).trim()
     if (!content) return
     const previousDraft = draft
+    const optimisticId = `tmp-${Date.now()}`
+    const optimisticMessage: AiChatMessage = {
+      id: optimisticId,
+      chat_id: activeChatId,
+      role: "user",
+      content,
+      meta: { source: "manual", optimistic: true },
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }
 
     if (draftTimerRef.current) {
       window.clearTimeout(draftTimerRef.current)
@@ -475,6 +490,7 @@ export function AiAgentPage() {
     setSending(true)
     setPageError("")
     setDraft("")
+    setActiveChat((prev) => (prev ? { ...prev, messages: [...prev.messages, optimisticMessage] } : prev))
 
     const result = await sendMessage(activeChatId, content)
     if (result) {
@@ -486,6 +502,11 @@ export function AiAgentPage() {
       await refreshChats()
     } else {
       setDraft(previousDraft)
+      setActiveChat((prev) =>
+        prev
+          ? { ...prev, messages: prev.messages.filter((message) => message.id !== optimisticId) }
+          : prev
+      )
       setPageError("Не удалось отправить сообщение. Попробуйте ещё раз.")
     }
 
@@ -644,7 +665,7 @@ export function AiAgentPage() {
         </div>
       </aside>
 
-      <main className="flex min-h-0 flex-1 flex-col">
+      <main className="flex min-h-0 flex-1 flex-col overflow-hidden">
         <div className="flex items-center justify-between gap-3 border-b bg-background/90 px-4 py-3 backdrop-blur">
           <div className="flex min-w-0 items-center gap-3">
             <Button
@@ -682,7 +703,7 @@ export function AiAgentPage() {
           </div>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto p-4">
+        <div className="min-h-0 flex-1 overflow-y-auto p-4 pb-28">
           {loadingChat ? (
             <div className="flex h-full items-center justify-center text-muted-foreground">
               <LoaderCircle className="mr-2 size-5 animate-spin" />
@@ -699,6 +720,7 @@ export function AiAgentPage() {
                   Чат думает...
                 </div>
               )}
+              <div ref={chatScrollEndRef} />
             </div>
           ) : chats.length === 0 ? (
             <div className="flex h-full items-center justify-center">
@@ -741,7 +763,7 @@ export function AiAgentPage() {
           )}
         </div>
 
-        <div className="border-t bg-background/95 p-4">
+        <div className="sticky bottom-0 border-t bg-background/95 p-4 backdrop-blur">
           <div className="mx-auto flex max-w-4xl flex-col gap-3">
             {quickReplies.length > 0 && (
               <div className="flex flex-wrap gap-2">

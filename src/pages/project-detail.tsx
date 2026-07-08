@@ -6,6 +6,7 @@ import {
   Calendar,
   CalendarArrowDown,
   CalendarArrowUp,
+  Box,
   ChevronRight,
   FolderPlus,
   Link2,
@@ -56,7 +57,25 @@ function getProjectItemIcon(type: ProjectCreateType) {
   if (type === "task_list") return ListTodo
   if (type === "link") return Link2
   if (type === "calendar") return Calendar
-  return SquareStack
+  return Box
+}
+
+function findProjectPath(items: NonNullable<ProjectDetail["items"]> | undefined, targetId: string): string[] {
+  if (!items || items.length === 0) return []
+
+  const walk = (nodes: NonNullable<ProjectDetail["items"]>, trail: string[]): string[] | null => {
+    for (const node of nodes) {
+      const nextTrail = [...trail, node.name]
+      if (node.id === targetId) {
+        return nextTrail
+      }
+      const found = walk(node.children || [], nextTrail)
+      if (found) return found
+    }
+    return null
+  }
+
+  return walk(items, []) || []
 }
 
 function flattenProjectItems(items: ProjectGridItem[], depth = 0): ProjectGridItem[] {
@@ -202,10 +221,13 @@ export function ProjectPage() {
   const folderItems = useMemo(() => projectItems.filter((item) => item.type === "folder"), [projectItems])
   const currentItem = contextMenu?.itemId ? projectItems.find((item) => item.id === contextMenu.itemId) || null : null
   const currentFolder = currentFolderId ? projectItems.find((item) => item.id === currentFolderId) || null : null
+  const currentFolderPath = useMemo(() => findProjectPath(project?.items, currentFolderId || ""), [project?.items, currentFolderId])
   const visibleItems = useMemo(() => {
     const source = boardSearch.trim()
       ? projectItems
-      : projectItems.filter((item) => (currentFolderId ? item.parent_id === currentFolderId : !item.parent_id))
+      : currentFolderId
+        ? projectItems.filter((item) => item.parent_id === currentFolderId)
+        : projectItems
     return source.filter((item) => {
       const typeLabel = item.type === "folder" ? "Папка" : item.type === "task_list" ? "Список задач" : item.type === "link" ? "Ссылка" : item.type === "calendar" ? "Календарь" : "Доска"
       return `${item.title} ${item.description || ""} ${typeLabel}`.toLowerCase().includes(boardSearch.toLowerCase())
@@ -271,7 +293,6 @@ export function ProjectPage() {
         }
         const folder = await createFolder(projectId, {
           name: createName.trim(),
-          description: createDescription.trim(),
           parent_id: createParentId,
         })
         if (!folder) throw new Error("folder_create_failed")
@@ -379,15 +400,15 @@ export function ProjectPage() {
     <div className="flex flex-col gap-6 p-4 lg:p-6" onClick={() => setContextMenu(null)}>
       <div className="flex flex-col gap-4 rounded-3xl border bg-card p-5 shadow-sm">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex items-center gap-4">
-            <div className="flex size-16 items-center justify-center overflow-hidden rounded-2xl bg-muted">
-              {project.img_url ? (
-                <img src={project.img_url} alt={project.name} className="h-full w-full object-cover" />
-              ) : (
-                <SquareStack className="size-8 text-muted-foreground" />
-              )}
-            </div>
-            <div className="min-w-0">
+              <div className="flex items-center gap-4">
+                <div className="flex size-16 items-center justify-center overflow-hidden rounded-2xl bg-muted">
+                  {project.img_url ? (
+                    <img src={project.img_url} alt={project.name} className="h-full w-full object-cover" />
+                  ) : (
+                    <Box className="size-8 text-muted-foreground" />
+                  )}
+                </div>
+                <div className="min-w-0">
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Link to={`/teams/${teamLogin}/projects`} className="hover:text-foreground">
                   Проекты
@@ -400,13 +421,13 @@ export function ProjectPage() {
                     <span className="font-medium text-foreground">{currentFolder.title}</span>
                   </>
                 )}
+                  </div>
+                  <h1 className="mt-1 text-2xl font-bold">{project.name}</h1>
+                  {project.description ? (
+                    <p className="max-w-2xl text-sm text-muted-foreground">{project.description}</p>
+                  ) : null}
+                </div>
               </div>
-              <h1 className="mt-1 text-2xl font-bold">{project.name}</h1>
-              {project.description ? (
-                <p className="max-w-2xl text-sm text-muted-foreground">{project.description}</p>
-              ) : null}
-            </div>
-          </div>
 
           <div className="flex flex-wrap items-center gap-2">
             <Button variant="outline" onClick={() => navigate(`/teams/${teamLogin}/projects/${project.id}/settings`)}>
@@ -422,33 +443,26 @@ export function ProjectPage() {
 
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <div className="text-sm font-medium">Объекты проекта</div>
-            <div className="text-sm text-muted-foreground">
-              {visibleItems.length} {visibleItems.length === 1 ? "объект" : visibleItems.length < 5 ? "объекта" : "объектов"}
+            <div className="flex items-center gap-2 text-sm font-medium">
+              <Box className="size-4 text-muted-foreground" />
+              <span>{visibleItems.length}</span>
+              <span className="text-muted-foreground">
+                {visibleItems.length === 1 ? "объект" : visibleItems.length < 5 ? "объекта" : "объектов"}
+              </span>
             </div>
-            <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-              <button
-                type="button"
-                className="hover:text-foreground"
-                onClick={() => setCurrentFolderId(null)}
-              >
-                {project.name}
-              </button>
-              {currentFolder && (
-                <>
-                  <ChevronRight className="size-4" />
-                  <span className="font-medium text-foreground">{currentFolder.title}</span>
-                </>
-              )}
-              {currentFolderId && (
-                <button
-                  type="button"
-                  className="ml-2 rounded-full border px-3 py-1 text-xs hover:bg-muted"
-                  onClick={() => setCurrentFolderId(null)}
-                >
-                  В корень
-                </button>
-              )}
+            <div className="text-sm text-muted-foreground">
+              {currentFolderPath.length > 0 ? (
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  {currentFolderPath.map((part, index) => (
+                    <span key={`${part}-${index}`} className="flex items-center gap-2">
+                      {index > 0 && <ChevronRight className="size-4" />}
+                      <span className={index === currentFolderPath.length - 1 ? "font-medium text-foreground" : ""}>
+                        {part}
+                      </span>
+                    </span>
+                  ))}
+                </div>
+              ) : null}
             </div>
           </div>
           <div className="flex flex-col gap-2 sm:flex-row">
@@ -529,22 +543,16 @@ export function ProjectPage() {
                       {getItemKindLabel(item)}
                     </span>
                   </div>
-                    <div className="mt-3 min-w-0 flex-1">
+                  <div className="mt-3 min-w-0 flex-1">
                     <div className="truncate font-medium">{item.title}</div>
                     {item.description ? (
                       <div className="mt-1 line-clamp-2 text-xs text-muted-foreground">
                         {item.description}
                       </div>
                     ) : null}
-                    </div>
+                  </div>
                   <div className="mt-3 flex items-center justify-between gap-2 text-xs text-muted-foreground">
-                    {item.type === "folder" ? (
-                      <span>{item.children.length} внутри</span>
-                    ) : (
-                      <span className="truncate">
-                        {item.type === "link" ? "Ссылка" : "Открыть"}
-                      </span>
-                    )}
+                    {item.type === "folder" ? <span>{item.children.length} внутри</span> : <span />}
                     {item.type === "link" && getItemLink(item) && (
                       <button
                         type="button"
@@ -553,9 +561,9 @@ export function ProjectPage() {
                           e.stopPropagation()
                           window.open(getItemLink(item), "_blank", "noreferrer")
                         }}
-                      >
-                        Перейти
-                      </button>
+                        >
+                          Перейти
+                        </button>
                     )}
                     <span>{formatDate(item.updated_at)}</span>
                   </div>

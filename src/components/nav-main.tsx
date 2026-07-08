@@ -31,11 +31,12 @@ export function NavMain({
     isActive?: boolean
     defaultOpen?: boolean
     adminOnly?: boolean
-    items?: {
-      title: string
-      url: string
-      icon?: LucideIcon
-    }[]
+  items?: {
+    title: string
+    url: string
+    icon?: LucideIcon
+    exact?: boolean
+  }[]
   }[]
 }) {
   const location = useLocation()
@@ -99,11 +100,11 @@ export function NavMain({
                 <CollapsibleContent>
                   <SidebarMenuSub>
                     {item.items?.map((subItem) => (
-                      <SidebarMenuSubItem key={subItem.title}>
-                        <SidebarMenuSubButton asChild isActive={isActivePath(subItem.url)}>
-                          <Link to={resolveUrl(subItem.url)}>
-                            {subItem.icon && <subItem.icon />}
-                            <span>{subItem.title}</span>
+                    <SidebarMenuSubItem key={subItem.title}>
+                      <SidebarMenuSubButton asChild isActive={subItem.exact ? location.pathname === resolveUrl(subItem.url) : isActivePath(subItem.url)}>
+                        <Link to={resolveUrl(subItem.url)}>
+                          {subItem.icon && <subItem.icon />}
+                          <span>{subItem.title}</span>
                           </Link>
                         </SidebarMenuSubButton>
                       </SidebarMenuSubItem>

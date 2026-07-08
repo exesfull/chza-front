@@ -40,6 +40,8 @@ interface NavItem {
   items?: {
     title: string
     url: string
+    icon?: LucideIcon
+    exact?: boolean
   }[]
 }
 
@@ -68,10 +70,6 @@ const navMainBase: NavItem[] = [
     title: "Календарь",
     url: "calendar",
     icon: CalendarDays,
-  },
-  {
-    title: "separator",
-    url: "",
   },
   {
     title: "AI агент",
@@ -178,6 +176,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             title: "Главная",
             url: `projects/${activeProject.id}`,
             icon: LayoutDashboard,
+            exact: true,
           },
           ...(currentObject ? [currentObject] : []),
         ],

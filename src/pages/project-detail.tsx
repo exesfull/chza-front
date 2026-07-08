@@ -8,7 +8,6 @@ import {
   CalendarArrowUp,
   ChevronRight,
   FolderPlus,
-  House,
   Link2,
   ListTodo,
   Plus,
@@ -372,100 +371,97 @@ export function ProjectPage() {
   }
 
   return (
-    <div
-      className="flex flex-col gap-6 p-4 lg:p-6"
-      onContextMenu={(e) => {
-        e.preventDefault()
-        setContextMenu({ x: e.clientX, y: e.clientY, parentId: currentFolderId })
-      }}
-      onClick={() => setContextMenu(null)}
-    >
-      <div className="flex flex-col gap-4 rounded-3xl border bg-card p-5 shadow-sm lg:flex-row lg:items-center lg:justify-between">
-        <div className="flex items-center gap-4">
-          <div className="flex size-16 items-center justify-center overflow-hidden rounded-2xl bg-muted">
-            {project.img_url ? (
-              <img src={project.img_url} alt={project.name} className="h-full w-full object-cover" />
-            ) : (
-              <SquareStack className="size-8 text-muted-foreground" />
-            )}
-          </div>
-          <div className="min-w-0">
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Link to={`/teams/${teamLogin}/projects`} className="hover:text-foreground">
-                Проекты
-              </Link>
-              <ChevronRight className="size-4" />
-              <span className="font-medium text-foreground">{project.name}</span>
-              {currentFolder && (
-                <>
-                  <ChevronRight className="size-4" />
-                  <span className="font-medium text-foreground">{currentFolder.title}</span>
-                </>
+    <div className="flex flex-col gap-6 p-4 lg:p-6" onClick={() => setContextMenu(null)}>
+      <div className="flex flex-col gap-4 rounded-3xl border bg-card p-5 shadow-sm">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex items-center gap-4">
+            <div className="flex size-16 items-center justify-center overflow-hidden rounded-2xl bg-muted">
+              {project.img_url ? (
+                <img src={project.img_url} alt={project.name} className="h-full w-full object-cover" />
+              ) : (
+                <SquareStack className="size-8 text-muted-foreground" />
               )}
             </div>
-            <h1 className="mt-1 text-2xl font-bold">{project.name}</h1>
-            <p className="max-w-2xl text-sm text-muted-foreground">
-              {project.description || "Описание проекта не указано"}
-            </p>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Link to={`/teams/${teamLogin}/projects`} className="hover:text-foreground">
+                  Проекты
+                </Link>
+                <ChevronRight className="size-4" />
+                <span className="font-medium text-foreground">{project.name}</span>
+                {currentFolder && (
+                  <>
+                    <ChevronRight className="size-4" />
+                    <span className="font-medium text-foreground">{currentFolder.title}</span>
+                  </>
+                )}
+              </div>
+              <h1 className="mt-1 text-2xl font-bold">{project.name}</h1>
+              <p className="max-w-2xl text-sm text-muted-foreground">
+                {project.description || "Описание проекта не указано"}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="outline" onClick={() => navigate(`/teams/${teamLogin}/projects/${project.id}/settings`)}>
+              <Settings className="mr-2 size-4" />
+              Настройки
+            </Button>
+            <Button onClick={() => openCreate(undefined, currentFolderId)}>
+              <Plus className="mr-2 size-4" />
+              Создать
+            </Button>
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <Button variant="outline" onClick={() => navigate(`/teams/${teamLogin}/projects/${project.id}/settings`)}>
-            <Settings className="mr-2 size-4" />
-            Настройки
-          </Button>
-          <Button variant="outline" onClick={() => setCurrentFolderId(null)}>
-            <House className="mr-2 size-4" />
-            Главная
-          </Button>
-          <Button onClick={() => openCreate(undefined, currentFolderId)}>
-            <Plus className="mr-2 size-4" />
-            Создать
-          </Button>
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <div className="text-sm font-medium">Объекты проекта</div>
+            <div className="text-sm text-muted-foreground">
+              {visibleItems.length} {visibleItems.length === 1 ? "объект" : visibleItems.length < 5 ? "объекта" : "объектов"}
+            </div>
+          </div>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <div className="relative w-full sm:w-80">
+              <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={boardSearch}
+                onChange={(e) => setBoardSearch(e.target.value)}
+                placeholder="Поиск по всем объектам..."
+                className="pl-9"
+              />
+            </div>
+            <Select value={boardSort} onValueChange={(value) => setBoardSort(value as BoardSort)}>
+              <SelectTrigger className="w-full sm:w-56">
+                <SelectValue placeholder="Сортировка" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="updated_desc">
+                  <span className="flex items-center gap-2"><CalendarArrowDown className="size-4" /> Последние изменения</span>
+                </SelectItem>
+                <SelectItem value="updated_asc">
+                  <span className="flex items-center gap-2"><CalendarArrowUp className="size-4" /> Сначала старые</span>
+                </SelectItem>
+                <SelectItem value="name_asc">
+                  <span className="flex items-center gap-2"><ArrowUpAZ className="size-4" /> Название (А-Я)</span>
+                </SelectItem>
+                <SelectItem value="name_desc">
+                  <span className="flex items-center gap-2"><ArrowUpZA className="size-4" /> Название (Я-А)</span>
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
       </div>
 
-      <div className="flex flex-col gap-3 rounded-2xl border bg-card p-4 shadow-sm lg:flex-row lg:items-center lg:justify-between">
-        <div>
-          <div className="text-sm font-medium">Объекты проекта</div>
-          <div className="text-sm text-muted-foreground">
-            {visibleItems.length} {visibleItems.length === 1 ? "объект" : visibleItems.length < 5 ? "объекта" : "объектов"}
-          </div>
-        </div>
-        <div className="flex flex-col gap-2 sm:flex-row">
-          <div className="relative w-full sm:w-80">
-            <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              value={boardSearch}
-              onChange={(e) => setBoardSearch(e.target.value)}
-              placeholder="Поиск по всем объектам..."
-              className="pl-9"
-            />
-          </div>
-          <Select value={boardSort} onValueChange={(value) => setBoardSort(value as BoardSort)}>
-            <SelectTrigger className="w-full sm:w-56">
-              <SelectValue placeholder="Сортировка" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="updated_desc">
-                <span className="flex items-center gap-2"><CalendarArrowDown className="size-4" /> Последние изменения</span>
-              </SelectItem>
-              <SelectItem value="updated_asc">
-                <span className="flex items-center gap-2"><CalendarArrowUp className="size-4" /> Сначала старые</span>
-              </SelectItem>
-              <SelectItem value="name_asc">
-                <span className="flex items-center gap-2"><ArrowUpAZ className="size-4" /> Название (А-Я)</span>
-              </SelectItem>
-              <SelectItem value="name_desc">
-                <span className="flex items-center gap-2"><ArrowUpZA className="size-4" /> Название (Я-А)</span>
-              </SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-
-      <div className="min-h-[420px] rounded-3xl border bg-card p-4 shadow-sm">
+      <div
+        className="min-h-[420px]"
+        onContextMenu={(e) => {
+          e.preventDefault()
+          setContextMenu({ x: e.clientX, y: e.clientY, parentId: currentFolderId })
+        }}
+      >
         {visibleItems.length > 0 ? (
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
             {visibleItems.map((item) => {
@@ -525,7 +521,7 @@ export function ProjectPage() {
             })}
           </div>
         ) : (
-          <div className="flex h-full min-h-[360px] items-center justify-center rounded-2xl border border-dashed">
+          <div className="flex h-full min-h-[360px] items-center justify-center">
             <div className="max-w-md text-center text-muted-foreground">
               <FolderPlus className="mx-auto mb-3 size-10" />
               <p className="font-medium text-foreground">Пока нет объектов</p>
@@ -539,10 +535,6 @@ export function ProjectPage() {
             </div>
           </div>
         )}
-      </div>
-
-      <div className="rounded-2xl border bg-card p-4 text-sm text-muted-foreground">
-        Обновлено: {formatDate(project.updated_at)}
       </div>
 
       {contextMenu && (
@@ -731,17 +723,6 @@ export function ProjectPage() {
                     <Textarea value={linkComment} onChange={(e) => setLinkComment(e.target.value)} rows={3} placeholder="Необязательно" />
                   </div>
                 </>
-              )}
-              {createType === "folder" && (
-                <div className="flex flex-col gap-2">
-                  <label className="text-sm font-medium">Описание</label>
-                  <Textarea
-                    value={createDescription}
-                    onChange={(e) => setCreateDescription(e.target.value)}
-                    rows={3}
-                    placeholder="Необязательно"
-                  />
-                </div>
               )}
               {createParentId && (
                 <div className="rounded-2xl border bg-muted/20 p-3 text-sm text-muted-foreground">

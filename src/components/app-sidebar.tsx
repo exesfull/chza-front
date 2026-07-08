@@ -144,14 +144,10 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       return true
     }) as NavItem[]
 
-  const navWithProject = navMain.map((item) => {
-    if (item.title !== "Проекты" || !activeProject) {
-      return item
-    }
-
-    const hasBoardRoute = Boolean(boardId || location.pathname.includes("/boards/"))
-    const hasListRoute = Boolean(listId || location.pathname.includes("/tasks/"))
-    const currentObject = hasBoardRoute
+  const hasBoardRoute = Boolean(boardId || location.pathname.includes("/boards/"))
+  const hasListRoute = Boolean(listId || location.pathname.includes("/tasks/"))
+  const currentObject = activeProject
+    ? hasBoardRoute
       ? {
           title: activeProject.boards?.find((board) => board.id === boardId)?.name || "Открытая доска",
           url: boardId ? `projects/${activeProject.id}/boards/${boardId}` : `projects/${activeProject.id}`,
@@ -164,25 +160,29 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             icon: ListTodo,
           }
         : null
+    : null
 
-    return {
-      ...item,
-      isActive: true,
-      items: [
-        {
-          title: activeProject.name,
-          url: `projects/${activeProject.id}`,
-          icon: FolderKanban,
-        },
-        {
-          title: "Главная",
-          url: `projects/${activeProject.id}`,
-          icon: LayoutDashboard,
-        },
-        ...(currentObject ? [currentObject] : []),
-      ],
-    }
-  })
+  const activeProjectItem = activeProject
+    ? {
+        title: activeProject.name,
+        url: `projects/${activeProject.id}`,
+        icon: FolderKanban,
+        isActive: Boolean(location.pathname.includes(`/projects/${activeProject.id}`)),
+        items: [
+          {
+            title: "Главная",
+            url: `projects/${activeProject.id}`,
+            icon: LayoutDashboard,
+          },
+          ...(currentObject ? [currentObject] : []),
+        ],
+      }
+    : null
+
+  const navWithProject = [
+    ...navMain,
+    ...(activeProjectItem ? [activeProjectItem] : []),
+  ]
 
   return (
     <Sidebar collapsible="icon" {...props}>

@@ -33,7 +33,11 @@ export interface ListInfo {
   cols: TaskColumn[]
 }
 
-export function useTaskLists(teamLogin: string | undefined) {
+function buildProjectQuery(projectId?: string | null): string {
+  return projectId ? `&project_id=${encodeURIComponent(projectId)}` : ""
+}
+
+export function useTaskLists(teamLogin: string | undefined, projectId?: string | null) {
   const [lists, setLists] = useState<TaskList[]>([])
   const [columns, setColumns] = useState<TaskColumn[]>([])
   const [tasks, setTasks] = useState<Task[]>([])
@@ -44,7 +48,7 @@ export function useTaskLists(teamLogin: string | undefined) {
     if (!teamLogin) return
     setLoading(true)
     try {
-      const { data } = await api.get(`/main/task/getLists/?team_login=${teamLogin}`)
+      const { data } = await api.get(`/main/task/getLists/?team_login=${teamLogin}${buildProjectQuery(projectId)}`)
       if (data.status && Array.isArray(data.data)) {
         const mapped: TaskList[] = data.data.map((item: ApiTaskList) => ({
           id: String(item.id),
@@ -60,7 +64,7 @@ export function useTaskLists(teamLogin: string | undefined) {
     } finally {
       setLoading(false)
     }
-  }, [teamLogin])
+  }, [teamLogin, projectId])
 
   useEffect(() => { fetchLists() }, [fetchLists])
 
@@ -72,6 +76,9 @@ export function useTaskLists(teamLogin: string | undefined) {
       formData.append("team_login", teamLogin)
       formData.append("name", name)
       formData.append("description", description || "")
+      if (projectId) {
+        formData.append("project_id", projectId)
+      }
       const { data } = await api.post("/main/task/createList/", formData, {
         headers: { "Content-Type": "multipart/form-data" },
       })
@@ -90,7 +97,7 @@ export function useTaskLists(teamLogin: string | undefined) {
       console.error("Failed to create task list:", error)
     }
     return null
-  }, [teamLogin])
+  }, [teamLogin, projectId])
 
   // Edit list via API (FormData)
   const editList = useCallback(async (listId: string, updates: { name?: string; description?: string; view_type?: "kanban" | "table"; is_deleted?: boolean; is_archived?: boolean }) => {
@@ -99,6 +106,9 @@ export function useTaskLists(teamLogin: string | undefined) {
       const formData = new FormData()
       formData.append("team_login", teamLogin)
       formData.append("list_id", listId)
+      if (projectId) {
+        formData.append("project_id", projectId)
+      }
       if (updates.name !== undefined) formData.append("name", updates.name)
       if (updates.description !== undefined) formData.append("description", updates.description)
       if (updates.view_type !== undefined) formData.append("view_type", updates.view_type)
@@ -120,7 +130,7 @@ export function useTaskLists(teamLogin: string | undefined) {
       console.error("Failed to edit task list:", error)
     }
     return false
-  }, [])
+  }, [teamLogin, projectId])
 
   // Delete list via API (soft delete)
   const deleteList = useCallback(async (id: string) => {
@@ -144,7 +154,7 @@ export function useTaskLists(teamLogin: string | undefined) {
   const getListInfo = useCallback(async (listId: string): Promise<ListInfo | null> => {
     if (!teamLogin) return null
     try {
-      const { data } = await api.get(`/main/task/getListInfo/?team_login=${teamLogin}&list_id=${listId}`)
+      const { data } = await api.get(`/main/task/getListInfo/?team_login=${teamLogin}&list_id=${listId}${buildProjectQuery(projectId)}`)
       if (data.status && data.data) {
         const listData = data.data.list
         const colsData: ApiColumn[] = data.data.cols || []
@@ -172,7 +182,7 @@ export function useTaskLists(teamLogin: string | undefined) {
       console.error("Failed to fetch list info:", error)
     }
     return null
-  }, [teamLogin])
+  }, [teamLogin, projectId])
 
   // Update column sort order after drag-and-drop
   const updateListColsSort = useCallback(async (listId: string, columnIds: string[]): Promise<boolean> => {
@@ -182,6 +192,9 @@ export function useTaskLists(teamLogin: string | undefined) {
       formData.append("team_login", teamLogin)
       formData.append("list_id", listId)
       formData.append("column_ids", JSON.stringify(columnIds))
+      if (projectId) {
+        formData.append("project_id", projectId)
+      }
       const { data } = await api.post("/main/task/updateListColsSort/", formData, {
         headers: { "Content-Type": "multipart/form-data" },
       })
@@ -196,7 +209,7 @@ export function useTaskLists(teamLogin: string | undefined) {
       window.alert("Ошибка при сохранении порядка колонок")
       return false
     }
-  }, [teamLogin])
+  }, [teamLogin, projectId])
 
   // Edit column via API
   const editListCol = useCallback(async (listId: string, colId: string, updates: { name?: string; description?: string; color_hex?: string; is_deleted?: boolean }): Promise<boolean> => {
@@ -206,6 +219,9 @@ export function useTaskLists(teamLogin: string | undefined) {
       formData.append("team_login", teamLogin)
       formData.append("list_id", listId)
       formData.append("col_id", colId)
+      if (projectId) {
+        formData.append("project_id", projectId)
+      }
       if (updates.name !== undefined) formData.append("name", updates.name)
       if (updates.description !== undefined) formData.append("description", updates.description)
       if (updates.color_hex !== undefined) formData.append("color_hex", updates.color_hex)
@@ -218,7 +234,7 @@ export function useTaskLists(teamLogin: string | undefined) {
       console.error("Failed to edit column:", error)
       return false
     }
-  }, [teamLogin])
+  }, [teamLogin, projectId])
 
   // Create column via API
   const createListCol = useCallback(async (listId: string, name: string, color_hex?: string) => {
@@ -229,6 +245,9 @@ export function useTaskLists(teamLogin: string | undefined) {
       formData.append("list_id", listId)
       formData.append("name", name)
       if (color_hex) formData.append("color_hex", color_hex)
+      if (projectId) {
+        formData.append("project_id", projectId)
+      }
       const { data } = await api.post("/main/task/createListCol/", formData, {
         headers: { "Content-Type": "multipart/form-data" },
       })
@@ -248,7 +267,7 @@ export function useTaskLists(teamLogin: string | undefined) {
       console.error("Failed to create column:", error)
     }
     return null
-  }, [teamLogin])
+  }, [teamLogin, projectId])
 
   // Columns
   const addColumn = useCallback((listId: string, name: string) => {
@@ -303,7 +322,7 @@ export function useTaskLists(teamLogin: string | undefined) {
   // Fetch tasks for a list from API
   const fetchTasks = useCallback(async (listId: string): Promise<Task[]> => {
     try {
-      const { data } = await api.get(`/main/task/getTasksOnList/?team_login=${teamLogin}&list_id=${listId}`)
+      const { data } = await api.get(`/main/task/getTasksOnList/?team_login=${teamLogin}&list_id=${listId}${buildProjectQuery(projectId)}`)
       if (data.status && Array.isArray(data.data)) {
         const mapped: Task[] = data.data.map((apiTask: ApiTask) => ({
           id: apiTask.id,
@@ -325,7 +344,7 @@ export function useTaskLists(teamLogin: string | undefined) {
       console.error("Failed to fetch tasks:", error)
     }
     return []
-  }, [])
+  }, [teamLogin, projectId])
 
   // Create task via API
   const createTask = useCallback(async (listId: string, columnId: string, title: string): Promise<Task | null> => {
@@ -336,6 +355,9 @@ export function useTaskLists(teamLogin: string | undefined) {
       formData.append("list_id", listId)
       formData.append("title", title)
       formData.append("col_id", columnId)
+      if (projectId) {
+        formData.append("project_id", projectId)
+      }
       const { data } = await api.post("/main/task/createTask/", formData, {
         headers: { "Content-Type": "multipart/form-data" },
       })
@@ -360,7 +382,7 @@ export function useTaskLists(teamLogin: string | undefined) {
       console.error("Failed to create task:", error)
     }
     return null
-  }, [])
+  }, [teamLogin, projectId])
 
   // Toggle task completion (set closed_at or null)
   const toggleTask = useCallback(async (listId: string, taskId: string, currentlyCompleted: boolean): Promise<boolean> => {
@@ -396,7 +418,7 @@ export function useTaskLists(teamLogin: string | undefined) {
       console.error("Failed to toggle task:", error)
     }
     return false
-  }, [teamLogin])
+  }, [teamLogin, projectId])
 
   // Update task title
   const updateTaskText = useCallback(async (listId: string, taskId: string, title: string): Promise<boolean> => {
@@ -407,6 +429,9 @@ export function useTaskLists(teamLogin: string | undefined) {
       formData.append("list_id", listId)
       formData.append("task_id", taskId)
       formData.append("title", title)
+      if (projectId) {
+        formData.append("project_id", projectId)
+      }
       const { data } = await api.post("/main/task/editTask/", formData, {
         headers: { "Content-Type": "multipart/form-data" },
       })
@@ -418,7 +443,7 @@ export function useTaskLists(teamLogin: string | undefined) {
       console.error("Failed to update task:", error)
     }
     return false
-  }, [])
+  }, [teamLogin, projectId])
 
   // Move task to another column
   const moveTask = useCallback(async (listId: string, taskId: string, targetColumnId: string): Promise<boolean> => {
@@ -429,6 +454,9 @@ export function useTaskLists(teamLogin: string | undefined) {
       formData.append("list_id", listId)
       formData.append("task_id", taskId)
       formData.append("col_id", targetColumnId)
+      if (projectId) {
+        formData.append("project_id", projectId)
+      }
       const { data } = await api.post("/main/task/editTask/", formData, {
         headers: { "Content-Type": "multipart/form-data" },
       })
@@ -448,7 +476,7 @@ export function useTaskLists(teamLogin: string | undefined) {
       console.error("Failed to move task:", error)
     }
     return false
-  }, [])
+  }, [teamLogin, projectId])
 
   // Update task sort order within a column
   const updateColTasksSort = useCallback(async (columnId: string, taskIds: string[]): Promise<boolean> => {
@@ -458,6 +486,9 @@ export function useTaskLists(teamLogin: string | undefined) {
       formData.append("team_login", teamLogin)
       formData.append("col_id", columnId)
       formData.append("data", JSON.stringify(taskIds))
+      if (projectId) {
+        formData.append("project_id", projectId)
+      }
       const { data } = await api.post("/main/task/updateColTaskssSort/", formData, {
         headers: { "Content-Type": "multipart/form-data" },
       })
@@ -466,7 +497,7 @@ export function useTaskLists(teamLogin: string | undefined) {
       console.error("Failed to update task sort:", error)
       return false
     }
-  }, [teamLogin])
+  }, [teamLogin, projectId])
 
   // Update task description
   const updateTaskDescription = useCallback(async (listId: string, taskId: string, description: string): Promise<boolean> => {
@@ -477,6 +508,9 @@ export function useTaskLists(teamLogin: string | undefined) {
       formData.append("list_id", listId)
       formData.append("task_id", taskId)
       formData.append("description", description)
+      if (projectId) {
+        formData.append("project_id", projectId)
+      }
       const { data } = await api.post("/main/task/editTask/", formData, {
         headers: { "Content-Type": "multipart/form-data" },
       })
@@ -488,7 +522,7 @@ export function useTaskLists(teamLogin: string | undefined) {
       console.error("Failed to update task description:", error)
     }
     return false
-  }, [teamLogin])
+  }, [teamLogin, projectId])
 
   // Update task deadline
   const updateTaskDeadline = useCallback(async (listId: string, taskId: string, deadline: string): Promise<boolean> => {
@@ -499,6 +533,9 @@ export function useTaskLists(teamLogin: string | undefined) {
       formData.append("list_id", listId)
       formData.append("task_id", taskId)
       formData.append("deadline_date", deadline || "")
+      if (projectId) {
+        formData.append("project_id", projectId)
+      }
       const { data } = await api.post("/main/task/editTask/", formData, {
         headers: { "Content-Type": "multipart/form-data" },
       })
@@ -511,7 +548,7 @@ export function useTaskLists(teamLogin: string | undefined) {
       console.error("Failed to update task deadline:", error)
     }
     return false
-  }, [teamLogin])
+  }, [teamLogin, projectId])
 
   // Update task priority
   const updateTaskPriority = useCallback(async (listId: string, taskId: string, priority: string): Promise<boolean> => {
@@ -522,6 +559,9 @@ export function useTaskLists(teamLogin: string | undefined) {
       formData.append("list_id", listId)
       formData.append("task_id", taskId)
       formData.append("priority", priority)
+      if (projectId) {
+        formData.append("project_id", projectId)
+      }
       const { data } = await api.post("/main/task/editTask/", formData, {
         headers: { "Content-Type": "multipart/form-data" },
       })
@@ -533,7 +573,7 @@ export function useTaskLists(teamLogin: string | undefined) {
       console.error("Failed to update task priority:", error)
     }
     return false
-  }, [teamLogin])
+  }, [teamLogin, projectId])
 
   // Archive task
   const archiveTask = useCallback(async (listId: string, taskId: string): Promise<boolean> => {
@@ -544,6 +584,9 @@ export function useTaskLists(teamLogin: string | undefined) {
       formData.append("list_id", listId)
       formData.append("task_id", taskId)
       formData.append("status", "archived")
+      if (projectId) {
+        formData.append("project_id", projectId)
+      }
       const { data } = await api.post("/main/task/editTask/", formData, {
         headers: { "Content-Type": "multipart/form-data" },
       })
@@ -555,7 +598,7 @@ export function useTaskLists(teamLogin: string | undefined) {
       console.error("Failed to archive task:", error)
     }
     return false
-  }, [teamLogin])
+  }, [teamLogin, projectId])
 
   // Delete task (status = "deleted")
   const deleteTask = useCallback(async (listId: string, taskId: string): Promise<boolean> => {
@@ -566,6 +609,9 @@ export function useTaskLists(teamLogin: string | undefined) {
       formData.append("list_id", listId)
       formData.append("task_id", taskId)
       formData.append("status", "deleted")
+      if (projectId) {
+        formData.append("project_id", projectId)
+      }
       const { data } = await api.post("/main/task/editTask/", formData, {
         headers: { "Content-Type": "multipart/form-data" },
       })
@@ -577,7 +623,7 @@ export function useTaskLists(teamLogin: string | undefined) {
       console.error("Failed to delete task:", error)
     }
     return false
-  }, [teamLogin])
+  }, [teamLogin, projectId])
 
   // Delete all tasks in a column
   const deleteAllTasksInColumn = useCallback(async (listId: string, columnId: string, onProgress?: (done: number, total: number) => void): Promise<boolean> => {
@@ -592,6 +638,9 @@ export function useTaskLists(teamLogin: string | undefined) {
         formData.append("list_id", listId)
         formData.append("task_id", tasksInCol[i].id)
         formData.append("status", "deleted")
+        if (projectId) {
+          formData.append("project_id", projectId)
+        }
         await api.post("/main/task/editTask/", formData, {
           headers: { "Content-Type": "multipart/form-data" },
         })
@@ -603,7 +652,7 @@ export function useTaskLists(teamLogin: string | undefined) {
     // Refresh tasks
     setTasks((prev) => prev.filter((t) => t.column_id !== columnId))
     return true
-  }, [teamLogin, tasks])
+  }, [teamLogin, projectId, tasks])
 
   // Archive all tasks in a column
   const archiveAllTasksInColumn = useCallback(async (listId: string, columnId: string, onlyCompleted: boolean = false, onProgress?: (done: number, total: number) => void): Promise<boolean> => {
@@ -621,6 +670,9 @@ export function useTaskLists(teamLogin: string | undefined) {
         formData.append("list_id", listId)
         formData.append("task_id", tasksInCol[i].id)
         formData.append("status", "archived")
+        if (projectId) {
+          formData.append("project_id", projectId)
+        }
         await api.post("/main/task/editTask/", formData, {
           headers: { "Content-Type": "multipart/form-data" },
         })
@@ -632,7 +684,7 @@ export function useTaskLists(teamLogin: string | undefined) {
     // Refresh tasks - remove archived ones
     setTasks((prev) => prev.filter((t) => t.column_id !== columnId || (onlyCompleted && !tasksInCol.find((at) => at.id === t.id))))
     return true
-  }, [teamLogin, tasks])
+  }, [teamLogin, projectId, tasks])
 
   const getColumnsForList = useCallback((listId: string) => {
     return columns.filter((c) => c.list_id === listId).sort((a, b) => a.order - b.order)

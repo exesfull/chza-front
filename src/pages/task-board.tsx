@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from "react"
-import { useParams, Link } from "react-router-dom"
+import { useParams, Link, useSearchParams } from "react-router-dom"
 import { ChevronRight, Plus, LayoutGrid, Loader2, Archive, Trash2, Settings, Pencil, ListTodo, Table } from "lucide-react"
 import { useTaskLists } from "@/hooks/use-task-lists"
 import { api } from "@/lib/api"
@@ -37,6 +37,8 @@ const TEMPLATE_COLS = [
 
 export function TaskBoardPage() {
   const { teamLogin, listId } = useParams()
+  const [searchParams] = useSearchParams()
+  const projectId = searchParams.get("project_id")
   const {
     getListInfo,
     updateListColsSort,
@@ -57,7 +59,7 @@ export function TaskBoardPage() {
     moveTask,
     deleteAllTasksInColumn,
     archiveAllTasksInColumn,
-  } = useTaskLists(teamLogin)
+  } = useTaskLists(teamLogin, projectId)
 
   const [listInfo, setListInfo] = useState<{ id: string; name: string; description: string; view_type: string } | null>(null)
   const [columns, setColumns] = useState<TaskColumn[]>([])
@@ -121,7 +123,8 @@ export function TaskBoardPage() {
     if (!listId || !listUpdatedAt || isUpdating) return
     const timer = setInterval(async () => {
       try {
-        const { data } = await api.get(`/main/task/getUpdatedTimeOnList/?team_login=${teamLogin}&list_id=${listId}`)
+        const projectQuery = projectId ? `&project_id=${encodeURIComponent(projectId)}` : ""
+        const { data } = await api.get(`/main/task/getUpdatedTimeOnList/?team_login=${teamLogin}&list_id=${listId}${projectQuery}`)
         if (data.status && data.data?.updated_at) {
           if (data.data.updated_at !== listUpdatedAt) {
             // List has been updated - refresh everything
@@ -150,7 +153,7 @@ export function TaskBoardPage() {
       }
     }, pollInterval)
     return () => clearInterval(timer)
-  }, [listId, listUpdatedAt, pollInterval, consecutiveMatches, isUpdating, teamLogin, getListInfo, fetchTasks])
+  }, [listId, listUpdatedAt, pollInterval, consecutiveMatches, isUpdating, teamLogin, projectId, getListInfo, fetchTasks])
 
   const handleAddColumn = async () => {
     if (!newColumnName.trim() || !listId) return

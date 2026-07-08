@@ -61,13 +61,32 @@ function previewText(text: string | null | undefined) {
   return text.length > 72 ? `${text.slice(0, 72)}...` : text
 }
 
+function tryParseAssistantPayload(content: string): { message?: string; quick_replies?: unknown } | null {
+  const raw = content.trim()
+  if (!raw.startsWith("{")) return null
+  try {
+    const parsed = JSON.parse(raw)
+    if (parsed && typeof parsed === "object") {
+      return parsed as { message?: string; quick_replies?: unknown }
+    }
+  } catch {
+    return null
+  }
+  return null
+}
+
 function extractQuickReplies(messages: AiChatMessage[]): string[] {
   for (let i = messages.length - 1; i >= 0; i--) {
     const message = messages[i]
     if (message.role !== "assistant") continue
     const meta = message.meta as { quick_replies?: unknown; kind?: string } | null
-    if (!meta || !Array.isArray(meta.quick_replies) || meta.quick_replies.length === 0) continue
-    return meta.quick_replies.filter((item): item is string => typeof item === "string" && item.trim() !== "")
+    if (meta && Array.isArray(meta.quick_replies) && meta.quick_replies.length > 0) {
+      return meta.quick_replies.filter((item): item is string => typeof item === "string" && item.trim() !== "")
+    }
+    const parsed = tryParseAssistantPayload(message.content)
+    if (parsed && Array.isArray(parsed.quick_replies) && parsed.quick_replies.length > 0) {
+      return parsed.quick_replies.filter((item): item is string => typeof item === "string" && item.trim() !== "")
+    }
   }
   return []
 }
@@ -653,6 +672,8 @@ function MessageBubble({ message }: { message: AiChatMessage }) {
   const isUser = message.role === "user"
   const meta = message.meta as { kind?: string } | null
   const isPreview = meta?.kind === "preview"
+  const parsed = isUser ? null : tryParseAssistantPayload(message.content)
+  const displayContent = parsed?.message?.trim() ? parsed.message : message.content
 
   return (
     <div className={cn("flex", isUser ? "justify-end" : "justify-start")}>
@@ -667,7 +688,7 @@ function MessageBubble({ message }: { message: AiChatMessage }) {
         )}
       >
         {isPreview && <div className="mb-2 text-xs font-semibold text-amber-700 dark:text-amber-400">План агента</div>}
-        <div className="whitespace-pre-wrap leading-6">{message.content}</div>
+        <div className="whitespace-pre-wrap leading-6">{displayContent}</div>
       </div>
     </div>
   )

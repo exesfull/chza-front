@@ -4,6 +4,8 @@ import { Calendar, Image as ImageIcon, Link2, ListTodo, Plus, Search } from "luc
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import {
   Dialog,
   DialogContent,
@@ -13,6 +15,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { useProjects } from "@/hooks/use-projects"
+import { useTeamMembers } from "@/hooks/use-team-members"
+import { useUser } from "@/hooks/use-user"
 
 function formatDate(dateStr: string | null): string {
   if (!dateStr) return "Только что"
@@ -34,17 +38,28 @@ export function ProjectsPage() {
   const { teamLogin } = useParams()
   const navigate = useNavigate()
   const { projects, loading, createProject } = useProjects(teamLogin)
+  const { members, loading: membersLoading } = useTeamMembers(teamLogin)
+  const { user } = useUser()
   const [search, setSearch] = useState("")
   const [createOpen, setCreateOpen] = useState(false)
   const [name, setName] = useState("")
   const [description, setDescription] = useState("")
-  const [imgUrl, setImgUrl] = useState("")
+  const [selectedMembers, setSelectedMembers] = useState<string[]>([])
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState("")
 
   useEffect(() => {
     document.title = "Проекты"
   }, [])
+
+  useEffect(() => {
+    if (!createOpen) {
+      return
+    }
+
+    const creatorId = user?.id
+    setSelectedMembers(creatorId ? [creatorId] : [])
+  }, [createOpen, user])
 
   const filteredProjects = useMemo(
     () =>
@@ -75,7 +90,7 @@ export function ProjectsPage() {
       const project = await createProject({
         name: trimmedName,
         description: description.trim(),
-        img_url: imgUrl.trim(),
+        member_ids: JSON.stringify(selectedMembers.length > 0 ? selectedMembers : user?.id ? [user.id] : []),
       })
 
       if (!project) {
@@ -86,7 +101,7 @@ export function ProjectsPage() {
       setCreateOpen(false)
       setName("")
       setDescription("")
-      setImgUrl("")
+      setSelectedMembers(user?.id ? [user.id] : [])
       if (teamLogin) {
         navigate(`/teams/${teamLogin}/projects/${project.id}`)
       }
@@ -205,12 +220,64 @@ export function ProjectsPage() {
               />
             </div>
             <div className="flex flex-col gap-2">
-              <label className="text-sm font-medium">Обложка</label>
-              <Input
-                placeholder="URL изображения"
-                value={imgUrl}
-                onChange={(e) => setImgUrl(e.target.value)}
-              />
+              <label className="text-sm font-medium">Участники проекта</label>
+              <div className="grid gap-2 max-h-64 overflow-y-auto rounded-xl border p-2">
+                {membersLoading ? (
+                  <div className="p-4 text-sm text-muted-foreground">Загрузка участников...</div>
+                ) : members.length > 0 ? (
+                  members.map((member) => {
+                    const fullName = `${member.last_name} ${member.first_name}`.trim()
+                    const isCreator = member.id === user?.id
+                    const checked = selectedMembers.includes(member.id)
+
+                    return (
+                      <label
+                        key={member.id}
+                        className="flex cursor-pointer items-center gap-3 rounded-xl border px-3 py-2 transition-colors hover:bg-muted/40"
+                      >
+                        <Checkbox
+                          checked={checked}
+                          disabled={isCreator}
+                          onCheckedChange={(value) => {
+                            const nextChecked = Boolean(value)
+                            setSelectedMembers((current) => {
+                              if (isCreator) {
+                                return current.includes(member.id) ? current : [...current, member.id]
+                              }
+                              if (nextChecked) {
+                                return current.includes(member.id) ? current : [...current, member.id]
+                              }
+                              return current.filter((id) => id !== member.id)
+                            })
+                          }}
+                        />
+                        <Avatar className="size-9 rounded-lg">
+                          <AvatarImage src={member.img_url} alt={fullName} />
+                          <AvatarFallback className="rounded-lg text-xs">
+                            {fullName.slice(0, 2).toUpperCase() || "П"}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="truncate text-sm font-medium">{fullName || "Пользователь"}</span>
+                            {isCreator && (
+                              <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
+                                Глава
+                              </span>
+                            )}
+                          </div>
+                          <p className="truncate text-xs text-muted-foreground">{member.email}</p>
+                        </div>
+                      </label>
+                    )
+                  })
+                ) : (
+                  <div className="p-4 text-sm text-muted-foreground">В команде пока нет участников</div>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Глава проекта назначается автоматически на создателя. Остальных участников можно выбрать здесь.
+              </p>
             </div>
             {error && <p className="text-sm text-destructive">{error}</p>}
           </div>

@@ -101,7 +101,7 @@ export function useProjects(teamLogin?: string) {
     return null
   }, [teamLogin])
 
-  const createProject = useCallback(async (payload: { name: string; description?: string; img_url?: string }) => {
+  const createProject = useCallback(async (payload: { name: string; description?: string; member_ids?: string }) => {
     if (!teamLogin) {
       return null
     }

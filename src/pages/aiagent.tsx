@@ -483,34 +483,37 @@ export function AiAgentPage() {
             </div>
           ) : activeChat ? (
             <div className="mx-auto flex max-w-4xl flex-col gap-4">
-              {agentActions.length > 0 && (
-                <div className="rounded-2xl border bg-card p-4">
-                  <div className="mb-3 text-sm font-semibold">Что делает агент</div>
-                  <div className="flex flex-col gap-2">
-                    {agentActions.map((action, index) => (
-                      <div
-                        key={`${action.type}-${index}`}
-                        className={cn(
-                          "rounded-xl px-3 py-2 text-sm",
-                          action.type === "error"
-                            ? "bg-red-500/10 text-red-700 dark:text-red-400"
-                            : action.type === "success"
-                              ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
-                              : action.type === "preview"
-                                ? "bg-amber-500/10 text-amber-700 dark:text-amber-400"
-                                : "bg-muted text-muted-foreground"
-                        )}
-                      >
-                        {action.text}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
               {activeChat.messages.map((message) => (
                 <MessageBubble key={message.id} message={message} />
               ))}
+              {agentActions.length > 0 && (
+                <div className="flex justify-start">
+                  <div className="max-w-[80%] rounded-3xl border bg-card px-4 py-3 text-sm shadow-sm">
+                    <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      Ход агента
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      {agentActions.map((action, index) => (
+                        <div
+                          key={`${action.type}-${index}`}
+                          className={cn(
+                            "rounded-xl px-3 py-2 text-sm",
+                            action.type === "error"
+                              ? "bg-red-500/10 text-red-700 dark:text-red-400"
+                              : action.type === "success"
+                                ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
+                                : action.type === "preview"
+                                  ? "bg-amber-500/10 text-amber-700 dark:text-amber-400"
+                                  : "bg-muted text-muted-foreground"
+                          )}
+                        >
+                          {action.text}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
               {sending && (
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <LoaderCircle className="size-4 animate-spin" />

@@ -36,7 +36,7 @@ function formatDate(dateStr: string | null): string {
   return date.toLocaleDateString("ru-RU", { day: "numeric", month: "short", year: "numeric" })
 }
 
-function getBoardIcon(viewType?: string) {
+function getBoardIcon(viewType?: string | null) {
   if (viewType === "calendar") return Calendar
   if (viewType === "table") return LayoutGrid
   return ListTodo

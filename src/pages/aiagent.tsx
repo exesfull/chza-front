@@ -64,10 +64,51 @@ function previewText(text: string | null | undefined) {
 function extractJsonPayload(content: string): string | null {
   const raw = content.trim()
   if (!raw) return null
-  const first = raw.indexOf("{")
-  const last = raw.lastIndexOf("}")
-  if (first < 0 || last <= first) return null
-  return raw.slice(first, last + 1)
+
+  let depth = 0
+  let start = -1
+  let inString = false
+  let escaped = false
+
+  for (let i = 0; i < raw.length; i++) {
+    const char = raw[i]
+    if (inString) {
+      if (escaped) {
+        escaped = false
+        continue
+      }
+      if (char === "\\") {
+        escaped = true
+        continue
+      }
+      if (char === "\"") {
+        inString = false
+      }
+      continue
+    }
+
+    if (char === "\"") {
+      inString = true
+      continue
+    }
+
+    if (char === "{") {
+      if (depth === 0) start = i
+      depth += 1
+      continue
+    }
+
+    if (char === "}") {
+      if (depth > 0) {
+        depth -= 1
+        if (depth === 0 && start >= 0) {
+          return raw.slice(start, i + 1)
+        }
+      }
+    }
+  }
+
+  return null
 }
 
 function tryParseAssistantPayload(content: string): { message?: string; quick_replies?: unknown } | null {

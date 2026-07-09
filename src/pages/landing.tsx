@@ -16,6 +16,11 @@ export function LandingPage() {
     }
 
     if (user) {
+      const pendingInvite = sessionStorage.getItem("pending_invite_path")
+      if (pendingInvite?.startsWith("/invite/")) {
+        sessionStorage.removeItem("pending_invite_path")
+        window.location.replace(pendingInvite)
+      }
       return
     }
 

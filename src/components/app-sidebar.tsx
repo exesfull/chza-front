@@ -81,21 +81,11 @@ const navMainBase: NavItem[] = [
     url: "",
   },
   {
-    title: "Управление",
-    url: "/management/general",
+    title: "Управление командой",
+    url: "admin",
     icon: Shield,
     isActive: false,
     adminOnly: true,
-    items: [
-      {
-        title: "Основное",
-        url: "/management/general",
-      },
-      {
-        title: "Список участников",
-        url: "/management/members",
-      },
-    ],
   },
 ]
 

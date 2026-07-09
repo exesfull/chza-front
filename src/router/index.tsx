@@ -19,6 +19,8 @@ import { ManagementGeneralPage } from '@/pages/management-general'
 import { ManagementMembersPage } from '@/pages/management-members'
 import { NotFoundPage } from '@/pages/not-found'
 import { ForbiddenPage } from '@/pages/forbidden'
+import { TeamAdminPage } from '@/pages/team-admin'
+import { TeamInvitePage } from '@/pages/team-invite'
 import { useUser } from '@/hooks/use-user'
 import { LoaderCircle } from "lucide-react"
 
@@ -35,6 +37,7 @@ function TitleUpdater() {
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useUser()
+  const location = useLocation()
 
   if (loading) {
     return (
@@ -45,6 +48,9 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   }
 
   if (!user) {
+    if (location.pathname.startsWith('/invite/')) {
+      sessionStorage.setItem('pending_invite_path', location.pathname)
+    }
     return <Navigate to="/" replace />
   }
 
@@ -65,6 +71,14 @@ const routes: RouteObject[] = [
     element: (
       <ProtectedRoute>
         <TeamsPage />
+      </ProtectedRoute>
+    ),
+  },
+  {
+    path: 'invite/:token',
+    element: (
+      <ProtectedRoute>
+        <TeamInvitePage />
       </ProtectedRoute>
     ),
   },
@@ -123,6 +137,10 @@ const routes: RouteObject[] = [
       {
         path: 'aiagent/:chatId',
         element: <AiAgentPage />,
+      },
+      {
+        path: 'admin',
+        element: <TeamAdminPage />,
       },
       {
         path: 'management/general',

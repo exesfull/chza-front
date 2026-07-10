@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { Link, useNavigate, useParams } from "react-router-dom"
 import {
   ArrowUpAZ,
@@ -18,6 +18,18 @@ import {
   SquareStack,
   MoveRight,
   Pencil,
+  UploadCloud,
+  FileUp,
+  FileText,
+  FileImage,
+  FileVideo,
+  FileArchive,
+  FileCode2,
+  Presentation,
+  FileSpreadsheet,
+  Eye,
+  Download,
+  X,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -25,12 +37,14 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Progress } from "@/components/ui/progress"
 import { api } from "@/lib/api"
 import { useProjects, type ProjectDetail } from "@/hooks/use-projects"
 import { useBoards } from "@/hooks/use-boards"
+import { useTeams } from "@/hooks/use-teams"
 
 type BoardSort = "updated_desc" | "updated_asc" | "name_asc" | "name_desc"
-type ProjectCreateType = "folder" | "task_list" | "link" | "board" | "calendar"
+type ProjectCreateType = "folder" | "task_list" | "link" | "board" | "calendar" | "file"
 
 interface ProjectGridItem {
   id: string
@@ -43,6 +57,13 @@ interface ProjectGridItem {
   updated_at: string | null
   children: ProjectGridItem[]
   depth?: number
+  size_bytes?: number
+  mime_type?: string | null
+  file_kind?: string | null
+  download_url?: string | null
+  preview_url?: string | null
+  public_url?: string | null
+  original_name?: string | null
 }
 
 function formatDate(dateStr: string | null): string {
@@ -52,11 +73,50 @@ function formatDate(dateStr: string | null): string {
   return date.toLocaleDateString("ru-RU", { day: "numeric", month: "short", year: "numeric" })
 }
 
-function getProjectItemIcon(type: ProjectCreateType) {
+function formatFileSize(bytes: number | null | undefined): string {
+  const value = Number(bytes || 0)
+  if (value <= 0) return "0 B"
+  const units = ["B", "KB", "MB", "GB", "TB"]
+  const index = Math.min(units.length - 1, Math.floor(Math.log(value) / Math.log(1024)))
+  const size = value / Math.pow(1024, index)
+  const formatted = size >= 10 || index === 0 ? size.toFixed(0) : size.toFixed(1)
+  return `${formatted} ${units[index]}`
+}
+
+function detectLocalFileKind(name: string, mimeType?: string | null): ProjectGridItem["file_kind"] {
+  const lower = name.toLowerCase()
+  const ext = lower.split(".").pop() || ""
+  if (mimeType?.startsWith("image/")) return "image"
+  if (mimeType?.startsWith("video/")) return "video"
+  if (mimeType?.startsWith("text/")) return "text"
+  if (mimeType === "application/pdf") return "pdf"
+  if (["zip", "rar", "7z", "tar", "gz", "tgz"].includes(ext)) return "archive"
+  if (["doc", "docx", "odt", "rtf"].includes(ext)) return "document"
+  if (["xls", "xlsx", "ods", "csv"].includes(ext)) return "spreadsheet"
+  if (["ppt", "pptx", "odp"].includes(ext)) return "presentation"
+  if (["php", "js", "ts", "tsx", "jsx", "py", "go", "java", "c", "cpp", "h", "cs", "json", "yml", "yaml", "xml", "html", "css", "scss", "sh", "sql"].includes(ext)) return "code"
+  if (["jpg", "jpeg", "png", "gif", "webp", "bmp", "svg", "heic"].includes(ext)) return "image"
+  if (["mp4", "webm", "mov", "avi", "mkv", "m4v"].includes(ext)) return "video"
+  if (["txt", "md", "log"].includes(ext)) return "text"
+  if (ext === "pdf") return "pdf"
+  return "file"
+}
+
+function getProjectItemIcon(type: ProjectCreateType, fileKind?: ProjectGridItem["file_kind"]) {
   if (type === "folder") return FolderPlus
   if (type === "task_list") return ListTodo
   if (type === "link") return Link2
   if (type === "calendar") return Calendar
+  if (type === "file") {
+    if (fileKind === "image") return FileImage
+    if (fileKind === "video") return FileVideo
+    if (fileKind === "text" || fileKind === "pdf" || fileKind === "document") return FileText
+    if (fileKind === "archive") return FileArchive
+    if (fileKind === "spreadsheet") return FileSpreadsheet
+    if (fileKind === "presentation") return Presentation
+    if (fileKind === "code") return FileCode2
+    return FileUp
+  }
   return Box
 }
 
@@ -98,6 +158,13 @@ function mapApiProjectItems(items: NonNullable<ProjectDetail["items"]>): Project
     url: undefined,
     parent_id: item.parent_id,
     updated_at: item.updated_at,
+    size_bytes: item.size_bytes,
+    mime_type: item.mime_type,
+    file_kind: item.file_kind,
+    download_url: item.download_url,
+    preview_url: item.preview_url,
+    public_url: item.public_url,
+    original_name: item.original_name,
     children: mapApiProjectItems(item.children || []),
   }))
 }
@@ -105,8 +172,10 @@ function mapApiProjectItems(items: NonNullable<ProjectDetail["items"]>): Project
 export function ProjectPage() {
   const { teamLogin, projectId } = useParams()
   const navigate = useNavigate()
+  const { activeTeam, storageUsage } = useTeams()
   const { getProject, createFolder, renameItem, moveItem, deleteItem } = useProjects(teamLogin, { autoLoad: false })
   const { createBoard } = useBoards(teamLogin)
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
   const [project, setProject] = useState<ProjectDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [boardSearch, setBoardSearch] = useState("")
@@ -129,6 +198,24 @@ export function ProjectPage() {
   const [moveOpen, setMoveOpen] = useState(false)
   const [moveItemId, setMoveItemId] = useState<string | null>(null)
   const [moveTargetParentId, setMoveTargetParentId] = useState<string | null>(null)
+  const [uploadOpen, setUploadOpen] = useState(false)
+  const [uploadTargetFolderId, setUploadTargetFolderId] = useState<string | null>(null)
+  const [selectedFiles, setSelectedFiles] = useState<Array<{ id: string; file: File; displayName: string; size: number; kind: string }>>([])
+  const [uploading, setUploading] = useState(false)
+  const [uploadMessage, setUploadMessage] = useState("")
+  const [uploadProgress, setUploadProgress] = useState<Record<string, number>>({})
+  const [dragActive, setDragActive] = useState(false)
+  const [previewItem, setPreviewItem] = useState<ProjectGridItem | null>(null)
+
+  const storageOverview = storageUsage || (activeTeam ? {
+    used_gb: activeTeam.storage_used_gb ?? 0,
+    limit_gb: activeTeam.storage_limit_gb ?? 1,
+    percent: activeTeam.storage_percent ?? 0,
+  } : null)
+  const availableBytes = Math.max(0, Math.round(((storageOverview?.limit_gb ?? 1) - (storageOverview?.used_gb ?? 0)) * 1000000000))
+  const selectedUploadBytes = selectedFiles.reduce((sum, item) => sum + item.size, 0)
+  const canUploadSelected = selectedUploadBytes <= availableBytes
+  const canOpenUploadEntry = availableBytes > 0
 
   const refreshProject = async () => {
     if (!projectId) return
@@ -162,6 +249,135 @@ export function ProjectPage() {
   useEffect(() => {
     document.title = project?.name ? `Проект: ${project.name}` : "Проект"
   }, [project])
+
+  const closeUploadDialog = () => {
+    if (uploading) return
+    setUploadOpen(false)
+    setUploadTargetFolderId(null)
+    setSelectedFiles([])
+    setUploadMessage("")
+    setUploadProgress({})
+  }
+
+  const openUploadPicker = (parentId?: string | null) => {
+    setUploadTargetFolderId(parentId ?? currentFolderId ?? null)
+    fileInputRef.current?.click()
+  }
+
+  const handlePickedFiles = (fileList: FileList | File[]) => {
+    const files = Array.from(fileList)
+    if (files.length === 0) return
+
+    const mapped = files.map((file) => {
+      const displayName = file.name
+      return {
+        id: `${file.name}-${file.size}-${file.lastModified}-${Math.random().toString(36).slice(2)}`,
+        file,
+        displayName,
+        size: file.size,
+        kind: detectLocalFileKind(file.name, file.type) || "file",
+      }
+    })
+
+    setSelectedFiles(mapped)
+    setUploadMessage("")
+    setUploadProgress({})
+    setUploadOpen(true)
+  }
+
+  const uploadFiles = async () => {
+    if (!teamLogin || !projectId || uploading || selectedFiles.length === 0) return
+    setUploading(true)
+    setUploadMessage("")
+
+    try {
+      const limitBytes = Math.max(0, Math.round((storageOverview?.limit_gb ?? 1) * 1000000000))
+      const usedBytes = Math.max(0, Math.round((storageOverview?.used_gb ?? 0) * 1000000000))
+      const available = Math.max(0, limitBytes - usedBytes)
+      const totalSelected = selectedFiles.reduce((sum, item) => sum + item.size, 0)
+      if (totalSelected > available) {
+        setUploadMessage("В команде недостаточно места на диске")
+        return
+      }
+
+      const chunkSize = 2 * 1024 * 1024
+
+      for (const item of selectedFiles) {
+        const initForm = new URLSearchParams()
+        initForm.append("project_id", projectId)
+        initForm.append("name", item.displayName)
+        initForm.append("original_name", item.file.name)
+        initForm.append("size_bytes", String(item.size))
+        initForm.append("mime_type", item.file.type || "")
+        if (uploadTargetFolderId) initForm.append("parent_id", uploadTargetFolderId)
+
+        const initResponse = await api.post(
+          `/main/project/uploadFileInit/?team_login=${teamLogin}`,
+          initForm,
+          { headers: { "Content-Type": "application/x-www-form-urlencoded" } }
+        )
+
+        if (!initResponse.data?.status || !initResponse.data?.data?.upload_id) {
+          throw new Error(initResponse.data?.error || "upload_init_failed")
+        }
+
+        const uploadId = initResponse.data.data.upload_id as string
+        const totalChunks = Math.max(1, Math.ceil(item.size / chunkSize))
+
+        for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex += 1) {
+          const start = chunkIndex * chunkSize
+          const end = Math.min(item.size, start + chunkSize)
+          const chunk = item.file.slice(start, end)
+          let uploaded = false
+          let lastError: unknown = null
+          for (let attempt = 0; attempt < 3 && !uploaded; attempt += 1) {
+            try {
+              const form = new FormData()
+              form.append("project_id", projectId)
+              form.append("upload_id", uploadId)
+              form.append("name", item.displayName)
+              form.append("original_name", item.file.name)
+              form.append("size_bytes", String(item.size))
+              form.append("mime_type", item.file.type || "")
+              form.append("chunk_index", String(chunkIndex))
+              form.append("total_chunks", String(totalChunks))
+              if (uploadTargetFolderId) form.append("parent_id", uploadTargetFolderId)
+              form.append("chunk", chunk, item.file.name)
+
+              const response = await api.post(`/main/project/uploadFileChunk/?team_login=${teamLogin}`, form, {
+                headers: { "Content-Type": "multipart/form-data" },
+              })
+              if (!response.data?.status) {
+                throw new Error(response.data?.error || "upload_chunk_failed")
+              }
+              uploaded = true
+              const progress = Math.min(100, Math.round(((chunkIndex + 1) / totalChunks) * 100))
+              setUploadProgress((prev) => ({ ...prev, [item.id]: progress }))
+              if (response.data?.data?.file) {
+                await refreshProject()
+              }
+            } catch (error) {
+              lastError = error
+            }
+          }
+
+          if (!uploaded) {
+            throw lastError instanceof Error ? lastError : new Error("upload_chunk_failed")
+          }
+        }
+
+        setUploadProgress((prev) => ({ ...prev, [item.id]: 100 }))
+      }
+
+      await refreshProject()
+      closeUploadDialog()
+    } catch (error) {
+      console.error("Failed to upload files:", error)
+      setUploadMessage("Не удалось загрузить файлы")
+    } finally {
+      setUploading(false)
+    }
+  }
 
   const projectItems = useMemo(() => {
     const itemsFromApi = project?.items ? mapApiProjectItems(project.items) : []
@@ -229,7 +445,7 @@ export function ProjectPage() {
         ? projectItems.filter((item) => item.parent_id === currentFolderId)
         : projectItems
     return source.filter((item) => {
-      const typeLabel = item.type === "folder" ? "Папка" : item.type === "task_list" ? "Список задач" : item.type === "link" ? "Ссылка" : item.type === "calendar" ? "Календарь" : "Доска"
+      const typeLabel = item.type === "folder" ? "Папка" : item.type === "task_list" ? "Список задач" : item.type === "link" ? "Ссылка" : item.type === "calendar" ? "Календарь" : item.type === "file" ? "Файл" : "Доска"
       return `${item.title} ${item.description || ""} ${typeLabel}`.toLowerCase().includes(boardSearch.toLowerCase())
     })
   }, [projectItems, currentFolderId, boardSearch])
@@ -237,6 +453,7 @@ export function ProjectPage() {
   const getItemLink = (item: ProjectGridItem) => {
     if (item.type === "task_list") return `/teams/${teamLogin}/projects/${projectId}/tasks/${item.id}`
     if (item.type === "board") return `/teams/${teamLogin}/projects/${projectId}/boards/${item.id}`
+    if (item.type === "file") return item.preview_url || item.download_url || ""
     if (item.type === "link") {
       const link = project?.links?.find((l) => l.id === item.id)
       return link?.url || ""
@@ -254,6 +471,8 @@ export function ProjectPage() {
         return "Ссылка"
       case "calendar":
         return "Календарь"
+      case "file":
+        return "Файл"
       default:
         return "Доска"
     }
@@ -397,7 +616,42 @@ export function ProjectPage() {
   }
 
   return (
-    <div className="flex flex-col gap-6 p-4 lg:p-6" onClick={() => setContextMenu(null)}>
+    <div
+      className="flex flex-col gap-6 p-4 lg:p-6"
+      onClick={() => setContextMenu(null)}
+      onDragEnter={(e) => {
+        e.preventDefault()
+        setDragActive(true)
+      }}
+      onDragOver={(e) => {
+        e.preventDefault()
+        setDragActive(true)
+      }}
+      onDragLeave={(e) => {
+        e.preventDefault()
+        if ((e.currentTarget as HTMLElement).contains(e.relatedTarget as Node)) return
+        setDragActive(false)
+      }}
+      onDrop={(e) => {
+        e.preventDefault()
+        setDragActive(false)
+        if (e.dataTransfer.files?.length) {
+          handlePickedFiles(e.dataTransfer.files)
+        }
+      }}
+    >
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        className="hidden"
+        onChange={(e) => {
+          if (e.target.files?.length) {
+            handlePickedFiles(e.target.files)
+          }
+          e.target.value = ""
+        }}
+      />
       <div className="flex flex-col gap-4 rounded-3xl border bg-card p-5 shadow-sm">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
               <div className="flex items-center gap-4">
@@ -434,6 +688,12 @@ export function ProjectPage() {
               <Settings className="mr-2 size-4" />
               Настройки
             </Button>
+            {canOpenUploadEntry && (
+              <Button variant="outline" onClick={() => openUploadPicker(currentFolderId)}>
+                <UploadCloud className="mr-2 size-4" />
+                Загрузить
+              </Button>
+            )}
             <Button onClick={() => openCreate(undefined, currentFolderId)}>
               <Plus className="mr-2 size-4" />
               Создать
@@ -499,16 +759,21 @@ export function ProjectPage() {
       </div>
 
       <div
-        className="min-h-[420px]"
+        className={`relative min-h-[420px] rounded-3xl border border-dashed transition-colors ${dragActive ? "border-primary bg-primary/5" : "border-transparent"}`}
         onContextMenu={(e) => {
           e.preventDefault()
           setContextMenu({ x: e.clientX, y: e.clientY, parentId: currentFolderId })
         }}
       >
+        {dragActive && (
+          <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-3xl bg-background/70 text-sm font-medium text-muted-foreground backdrop-blur-sm">
+            Отпустите файлы, чтобы загрузить их в проект
+          </div>
+        )}
         {visibleItems.length > 0 ? (
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
             {visibleItems.map((item) => {
-              const Icon = getProjectItemIcon(item.type)
+              const Icon = getProjectItemIcon(item.type, item.file_kind)
               return (
                 <button
                   key={item.id}
@@ -517,6 +782,10 @@ export function ProjectPage() {
                     e.stopPropagation()
                     if (item.type === "folder") {
                       setCurrentFolderId(item.id)
+                      return
+                    }
+                    if (item.type === "file") {
+                      setPreviewItem(item)
                       return
                     }
                     const href = getItemLink(item)
@@ -552,19 +821,27 @@ export function ProjectPage() {
                     ) : null}
                   </div>
                   <div className="mt-3 flex items-center justify-between gap-2 text-xs text-muted-foreground">
-                    {item.type === "folder" ? <span>{item.children.length} внутри</span> : <span />}
-                    {item.type === "link" && getItemLink(item) && (
-                      <button
-                        type="button"
-                        className="rounded-full border px-3 py-1 text-[11px] font-medium hover:bg-muted"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          window.open(getItemLink(item), "_blank", "noreferrer")
-                        }}
+                    <div className="flex items-center gap-2">
+                      {item.type === "folder" ? (
+                        <span>{item.children.length} внутри</span>
+                      ) : item.type === "file" ? (
+                        <span>{formatFileSize(item.size_bytes)}</span>
+                      ) : (
+                        <span />
+                      )}
+                      {item.type === "link" && getItemLink(item) && (
+                        <button
+                          type="button"
+                          className="rounded-full border px-3 py-1 text-[11px] font-medium hover:bg-muted"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            window.open(getItemLink(item), "_blank", "noreferrer")
+                          }}
                         >
                           Перейти
                         </button>
-                    )}
+                      )}
+                    </div>
                     <span>{formatDate(item.updated_at)}</span>
                   </div>
                 </button>
@@ -602,6 +879,11 @@ export function ProjectPage() {
                   if (currentItem.type === "folder") {
                     setCurrentFolderId(currentItem.id)
                   } else {
+                    if (currentItem.type === "file") {
+                      setPreviewItem(currentItem)
+                      setContextMenu(null)
+                      return
+                    }
                     const href = getItemLink(currentItem)
                     if (href) {
                       if (currentItem.type === "link") {
@@ -617,6 +899,18 @@ export function ProjectPage() {
                 <SquareStack className="size-4" />
                 Открыть
               </button>
+              {currentItem.type === "file" && currentItem.download_url && (
+                <button
+                  className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm hover:bg-muted"
+                  onClick={() => {
+                    window.open(currentItem.download_url || undefined, "_blank", "noreferrer")
+                    setContextMenu(null)
+                  }}
+                >
+                  <Download className="size-4" />
+                  Скачать
+                </button>
+              )}
               <button
                 className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm hover:bg-muted"
                 onClick={() => {
@@ -657,6 +951,18 @@ export function ProjectPage() {
             </>
           ) : (
             <>
+              {canOpenUploadEntry && (
+                <button
+                  className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm hover:bg-muted"
+                  onClick={() => {
+                    openUploadPicker(contextMenu.parentId ?? null)
+                    setContextMenu(null)
+                  }}
+                >
+                  <UploadCloud className="size-4" />
+                  Загрузить
+                </button>
+              )}
               <button
                 className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm hover:bg-muted"
                 onClick={() => { openCreate("folder", contextMenu.parentId ?? null); setContextMenu(null) }}
@@ -718,14 +1024,22 @@ export function ProjectPage() {
                 { type: "link" as const, title: "Ссылка", icon: Link2, description: "Внешняя ссылка" },
                 { type: "board" as const, title: "Доска", icon: SquareStack, description: "Excalidraw / whiteboard" },
                 { type: "calendar" as const, title: "Календарь", icon: Calendar, description: "Список с календарным видом" },
+                ...(canOpenUploadEntry ? [{ type: "file" as const, title: "Загрузить", icon: UploadCloud, description: "Файлы, документы, архивы" }] : []),
               ].map((item) => {
                 const Icon = item.icon
                 return (
                   <button
                     key={item.type}
-                  type="button"
+                    type="button"
                     className={`flex items-start gap-3 rounded-2xl border p-4 text-left transition-colors hover:bg-muted/40 ${createType === item.type ? "border-primary bg-primary/5" : ""}`}
                     onClick={() => {
+                      if (item.type === "file") {
+                        const targetParentId = createParentId
+                        setCreateOpen(false)
+                        setCreateType(null)
+                        openUploadPicker(targetParentId)
+                        return
+                      }
                       setCreateType(item.type)
                       setFormError("")
                     }}
@@ -798,6 +1112,137 @@ export function ProjectPage() {
               </Button>
             )}
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={uploadOpen} onOpenChange={(open) => (open ? setUploadOpen(true) : closeUploadDialog())}>
+        <DialogContent className="sm:max-w-[760px]">
+          <DialogHeader>
+            <DialogTitle>Загрузка файлов</DialogTitle>
+            <DialogDescription>
+              Проверьте названия файлов и отправьте их в проект.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center justify-between text-sm text-muted-foreground">
+              <span>{selectedFiles.length} файл(ов)</span>
+              <span>{formatFileSize(selectedUploadBytes)} из {formatFileSize(availableBytes)}</span>
+            </div>
+            <div className="h-2 overflow-hidden rounded-full bg-muted">
+              <div
+                className="h-full rounded-full bg-primary transition-all"
+                style={{ width: `${Math.min(100, availableBytes > 0 ? (selectedUploadBytes / availableBytes) * 100 : 0)}%` }}
+              />
+            </div>
+            {!canUploadSelected && (
+              <div className="rounded-2xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+                В диске команды недостаточно места для загрузки этих файлов.
+              </div>
+            )}
+
+            <div className="max-h-[360px] space-y-3 overflow-y-auto pr-1">
+              {selectedFiles.map((item) => (
+                <div key={item.id} className="rounded-2xl border bg-muted/20 p-4">
+                  <div className="flex items-start gap-3">
+                    <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                      {item.kind === "image" ? <FileImage className="size-5" /> : item.kind === "video" ? <FileVideo className="size-5" /> : item.kind === "archive" ? <FileArchive className="size-5" /> : item.kind === "code" ? <FileCode2 className="size-5" /> : item.kind === "spreadsheet" ? <FileSpreadsheet className="size-5" /> : item.kind === "presentation" ? <Presentation className="size-5" /> : <FileText className="size-5" />}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="font-medium">{item.file.name}</div>
+                        <button
+                          type="button"
+                          className="rounded-full p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+                          onClick={() => setSelectedFiles((prev) => prev.filter((file) => file.id !== item.id))}
+                        >
+                          <X className="size-4" />
+                        </button>
+                      </div>
+                      <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center">
+                        <Input
+                          value={item.displayName}
+                          onChange={(e) => {
+                            const value = e.target.value
+                            setSelectedFiles((prev) => prev.map((file) => file.id === item.id ? { ...file, displayName: value } : file))
+                          }}
+                          className="sm:max-w-sm"
+                        />
+                        <span className="text-sm text-muted-foreground">{formatFileSize(item.size)}</span>
+                        <span className="text-sm text-muted-foreground">{item.kind}</span>
+                      </div>
+                      <div className="mt-3">
+                        <Progress value={uploadProgress[item.id] || 0} className="h-2" />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {uploadMessage && <p className="text-sm text-destructive">{uploadMessage}</p>}
+          </div>
+
+          <DialogFooter className="gap-2 sm:justify-between">
+            <Button variant="outline" onClick={closeUploadDialog} disabled={uploading}>
+              Отмена
+            </Button>
+            {canUploadSelected ? (
+              <Button onClick={uploadFiles} disabled={uploading || selectedFiles.length === 0}>
+                {uploading ? "Загрузка..." : "Загрузить"}
+              </Button>
+            ) : (
+              <Button disabled>
+                Нет места
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(previewItem)} onOpenChange={(open) => !open && setPreviewItem(null)}>
+        <DialogContent className="sm:max-w-[960px]">
+          <DialogHeader>
+            <DialogTitle>{previewItem?.title || "Просмотр файла"}</DialogTitle>
+            <DialogDescription>
+              {previewItem ? `${getItemKindLabel(previewItem)} • ${formatFileSize(previewItem.size_bytes)}` : ""}
+            </DialogDescription>
+          </DialogHeader>
+          {previewItem?.type === "file" ? (
+            <div className="space-y-4">
+              <div className="rounded-2xl border bg-muted/20 p-3">
+                <div className="mb-2 flex items-center justify-between text-sm text-muted-foreground">
+                  <span>{previewItem.original_name || previewItem.title}</span>
+                  <span>{formatFileSize(previewItem.size_bytes)}</span>
+                </div>
+                {previewItem.file_kind === "image" && previewItem.preview_url ? (
+                  <img src={previewItem.preview_url} alt={previewItem.title} className="max-h-[70vh] w-full rounded-2xl object-contain" />
+                ) : previewItem.file_kind === "video" && previewItem.preview_url ? (
+                  <video src={previewItem.preview_url} controls className="max-h-[70vh] w-full rounded-2xl" />
+                ) : previewItem.file_kind === "pdf" && previewItem.preview_url ? (
+                  <iframe src={previewItem.preview_url} className="h-[70vh] w-full rounded-2xl border-0" />
+                ) : previewItem.preview_url ? (
+                  <iframe src={previewItem.preview_url} className="h-[70vh] w-full rounded-2xl border-0" />
+                ) : (
+                  <div className="flex h-48 items-center justify-center text-sm text-muted-foreground">Предпросмотр недоступен</div>
+                )}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {previewItem.download_url && (
+                  <Button variant="outline" onClick={() => window.open(previewItem.download_url || undefined, "_blank", "noreferrer")}>
+                    <Download className="mr-2 size-4" />
+                    Скачать
+                  </Button>
+                )}
+                {previewItem.download_url && (
+                  <Button onClick={() => window.open(previewItem.download_url || undefined, "_blank", "noreferrer")}>
+                    <Eye className="mr-2 size-4" />
+                    Открыть
+                  </Button>
+                )}
+              </div>
+            </div>
+          ) : null}
         </DialogContent>
       </Dialog>
 

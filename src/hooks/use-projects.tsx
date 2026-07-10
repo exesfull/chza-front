@@ -53,7 +53,7 @@ export interface ProjectItem {
   id: string
   project_id: string
   parent_id: string | null
-  object_type: "folder" | "task_list" | "link" | "board"
+  object_type: "folder" | "task_list" | "link" | "board" | "file"
   object_id: string | null
   name: string
   description: string | null
@@ -61,6 +61,14 @@ export interface ProjectItem {
   created_at: string | null
   updated_at: string | null
   children?: ProjectItem[]
+  size_bytes?: number
+  mime_type?: string | null
+  file_kind?: string | null
+  download_url?: string | null
+  preview_url?: string | null
+  public_url?: string | null
+  original_name?: string | null
+  file_name?: string | null
 }
 
 function toFormBody(payload: Record<string, string | number | boolean | undefined | null>): URLSearchParams {

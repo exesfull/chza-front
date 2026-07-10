@@ -364,8 +364,8 @@ export function KanbanCard({
             <div className="flex flex-wrap gap-1 pt-1">
               {widgets.slice(0, 3).map((widget) => (
                 <span key={widget.id} className="rounded-full border bg-muted/40 px-2 py-0.5 text-[10px] text-muted-foreground">
-                  {widget.title}
-                  {widget.value ? ` • ${widget.value}` : ""}
+                  {widget.type === "money" ? "₽" : ""}
+                  {widget.value || "—"}
                 </span>
               ))}
             </div>

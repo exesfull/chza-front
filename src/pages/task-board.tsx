@@ -3,6 +3,7 @@ import { useNavigate, useParams, Link, useSearchParams } from "react-router-dom"
 import { ChevronRight, Plus, LayoutGrid, Loader2, Archive, Trash2, Settings, Pencil, ListTodo, Table } from "lucide-react"
 import { useTaskLists } from "@/hooks/use-task-lists"
 import { useProjects } from "@/hooks/use-projects"
+import { useTeamMembers } from "@/hooks/use-team-members"
 import { api } from "@/lib/api"
 import type { TaskColumn } from "@/types/task"
 import { COLUMN_COLORS } from "@/types/task"
@@ -11,7 +12,7 @@ import { Input } from "@/components/ui/input"
 import { Progress } from "@/components/ui/progress"
 import { KanbanColumn } from "@/components/kanban-column"
 import { TableView } from "@/components/table-view"
-import { TaskDetailSheet } from "@/components/task-detail-sheet"
+import { TaskDetailSheet, TaskWidgetDialog } from "@/components/task-detail-sheet"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   Dialog,
@@ -44,6 +45,7 @@ export function TaskBoardPage() {
   const [searchParams] = useSearchParams()
   const projectId = routeProjectId ?? searchParams.get("project_id")
   const { getProject } = useProjects(teamLogin, { autoLoad: false })
+  const { members: teamMembers } = useTeamMembers(teamLogin)
   const {
     getListInfo,
     updateListColsSort,
@@ -89,6 +91,7 @@ export function TaskBoardPage() {
   const [taskSheetOpen, setTaskSheetOpen] = useState(false)
   const [taskSheetLoading, setTaskSheetLoading] = useState(false)
   const [widgetDialogOpen, setWidgetDialogOpen] = useState(false)
+  const [widgetDialogTaskId, setWidgetDialogTaskId] = useState<string | null>(null)
   const [taskSheetInitialTab, setTaskSheetInitialTab] = useState<"chat" | "info" | "history">("chat")
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null)
   const [activeTaskData, setActiveTaskData] = useState<TaskCardData | null>(null)
@@ -325,17 +328,13 @@ export function TaskBoardPage() {
   const handleOpenTask = useCallback((taskId: string) => {
     setSelectedTaskId(taskId)
     setActiveTaskId(taskId)
-    setWidgetDialogOpen(false)
     setTaskSheetInitialTab("chat")
     setTaskSheetOpen(true)
   }, [])
 
   const handleOpenWidgetForTask = useCallback((taskId: string) => {
     setSelectedTaskId(taskId)
-    setActiveTaskId(taskId)
-    setTaskSheetLoading(false)
-    setTaskSheetInitialTab("info")
-    setTaskSheetOpen(true)
+    setWidgetDialogTaskId(taskId)
     setWidgetDialogOpen(true)
   }, [])
 
@@ -393,6 +392,19 @@ export function TaskBoardPage() {
       setActiveTaskData(refreshed)
     }
   }, [listId, activeTaskId, getTaskCard])
+
+  const refreshBoardAfterWidgetChange = useCallback(async (taskId: string) => {
+    if (!listId) return
+    await fetchTasks(listId)
+    await getListInfo(listId).then((info) => {
+      if (info) {
+        setListInfo(info.list)
+        setColumns(info.cols)
+        setListUpdatedAt(info.list.updated_at)
+      }
+    })
+    void refreshActiveTask(taskId)
+  }, [listId, fetchTasks, getListInfo, refreshActiveTask])
 
   // Global keyboard handler for selected tasks
   useEffect(() => {
@@ -1015,10 +1027,45 @@ export function TaskBoardPage() {
         onDeleteMessage={(messageId) => listId ? deleteTaskMessage(listId, messageId) : false}
         onEditAttachment={(attachmentId, fileName) => listId ? editTaskAttachment(listId, attachmentId, fileName) : false}
         onDeleteAttachment={(attachmentId) => listId ? deleteTaskAttachment(listId, attachmentId) : false}
-        onUpsertWidget={(payload) => listId ? upsertTaskWidget(listId, payload) : false}
-        onDeleteWidget={(widgetId) => listId ? deleteTaskWidget(listId, widgetId) : false}
-        widgetDialogOpen={widgetDialogOpen}
-        onWidgetDialogOpenChange={setWidgetDialogOpen}
+        onUpsertWidget={(payload) => {
+          if (!listId) return false
+          return Promise.resolve(upsertTaskWidget(listId, payload)).then((ok) => {
+            if (ok) void refreshBoardAfterWidgetChange(payload.task_id)
+            return ok
+          })
+        }}
+        onDeleteWidget={(widgetId) => {
+          if (!listId) return false
+          return Promise.resolve(deleteTaskWidget(listId, widgetId)).then((ok) => {
+            if (ok) void refreshBoardAfterWidgetChange(widgetDialogTaskId || activeTaskId || "")
+            return ok
+          })
+        }}
+        onAddWidgetRequest={() => {
+          if (!activeTaskId && !selectedTaskId) return
+          setWidgetDialogTaskId(activeTaskId || selectedTaskId)
+          setWidgetDialogOpen(true)
+        }}
+      />
+
+      <TaskWidgetDialog
+        open={widgetDialogOpen}
+        onOpenChange={(open) => {
+          setWidgetDialogOpen(open)
+          if (!open) setWidgetDialogTaskId(null)
+        }}
+        taskId={widgetDialogTaskId}
+        teamMembers={teamMembers}
+        onUpsertWidget={(payload) => {
+          if (!listId) return false
+          return Promise.resolve(upsertTaskWidget(listId, payload)).then((ok) => {
+            if (ok) void refreshBoardAfterWidgetChange(payload.task_id)
+            return ok
+          })
+        }}
+        onSaved={() => {
+          if (widgetDialogTaskId) void refreshBoardAfterWidgetChange(widgetDialogTaskId)
+        }}
       />
     </div>
   )

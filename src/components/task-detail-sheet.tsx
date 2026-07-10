@@ -75,10 +75,8 @@ interface TaskDetailSheetProps {
   onDeleteAttachment: (attachmentId: string) => Promise<boolean> | boolean
   onUpsertWidget: (payload: { task_id: string; widget_id?: string; type: WidgetType; title: string; value?: string; data?: Record<string, unknown> | null }) => Promise<boolean> | boolean
   onDeleteWidget: (widgetId: string) => Promise<boolean> | boolean
-  widgetDialogOpen: boolean
-  onWidgetDialogOpenChange: (open: boolean) => void
+  onAddWidgetRequest: () => void
   initialTab?: TaskTab
-  teamMembers?: Array<{ id: string; first_name: string; last_name: string; img_url: string | null }>
 }
 
 function formatTaskDate(value: string | null | undefined): string {
@@ -195,7 +193,7 @@ function WidgetBadge({ widget, onSave }: { widget: TaskWidget; onSave: (widgetId
         {widget.type === "money" ? (
           <span className="font-semibold" style={moneyColor ? { color: moneyColor } : undefined}>₽</span>
         ) : null}
-        <span>{currentValue || "Виджет"}</span>
+        <span>{currentValue || "—"}</span>
       </button>
       {open && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4">
@@ -234,10 +232,8 @@ export function TaskDetailSheet({
   onDeleteAttachment,
   onUpsertWidget,
   onDeleteWidget,
-  widgetDialogOpen,
-  onWidgetDialogOpenChange,
+  onAddWidgetRequest,
   initialTab = "chat",
-  teamMembers = [],
 }: TaskDetailSheetProps) {
   const task = taskData?.task || null
   const [tab, setTab] = useState<TaskTab>("chat")
@@ -251,12 +247,6 @@ export function TaskDetailSheet({
   const [selectedFiles, setSelectedFiles] = useState<Array<{ file: File; name: string }>>([])
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null)
   const [editingMessageText, setEditingMessageText] = useState("")
-  const [widgetStep, setWidgetStep] = useState<"select" | "form">("select")
-  const [widgetType, setWidgetType] = useState<WidgetType>("text")
-  const [widgetValue, setWidgetValue] = useState("")
-  const [widgetDate, setWidgetDate] = useState("")
-  const [widgetColor, setWidgetColor] = useState("#111111")
-  const [widgetAssignee, setWidgetAssignee] = useState("")
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   useEffect(() => {
@@ -275,26 +265,14 @@ export function TaskDetailSheet({
       setSelectedFiles([])
       setEditingMessageId(null)
       setEditingMessageText("")
-      onWidgetDialogOpenChange(false)
     }
-  }, [open, onWidgetDialogOpenChange])
+  }, [open])
 
   useEffect(() => {
     if (open) {
       setTab(initialTab)
     }
   }, [open, initialTab])
-
-  useEffect(() => {
-    if (!widgetDialogOpen) {
-      setWidgetStep("select")
-      setWidgetType("text")
-      setWidgetValue("")
-      setWidgetDate("")
-      setWidgetColor("#111111")
-      setWidgetAssignee("")
-    }
-  }, [widgetDialogOpen])
 
   const currentColumnName = useMemo(() => columns.find((col) => col.id === draftColumnId)?.name || "Без этапа", [columns, draftColumnId])
   const widgets = taskData?.widgets || []
@@ -321,73 +299,6 @@ export function TaskDetailSheet({
     await onUpdatePriority(task.id, draftPriority)
     if (draftColumnId && draftColumnId !== task.column_id) await onUpdateColumn(task.id, draftColumnId)
     if (draftDeadline) await onUpdateDeadline(task.id, new Date(draftDeadline).toISOString())
-  }
-
-  const handleWidgetTypeSelect = (type: WidgetType) => {
-    setWidgetType(type)
-    setWidgetStep("form")
-    setWidgetValue("")
-    setWidgetDate("")
-    setWidgetColor("#111111")
-    setWidgetAssignee("")
-  }
-
-  const handleWidgetSave = async () => {
-    if (!task) return
-
-    const title = getDefaultWidgetTitle(widgetType)
-    let value = ""
-    let data: Record<string, unknown> | null = null
-
-    switch (widgetType) {
-      case "text":
-        value = widgetValue.trim()
-        if (!value) return
-        break
-      case "date":
-        value = widgetDate ? new Date(widgetDate).toISOString() : ""
-        if (!value) return
-        data = { mode: "date" }
-        break
-      case "link":
-      case "email":
-      case "phone":
-      case "fio":
-        value = widgetValue.trim()
-        if (!value) return
-        data = { mode: widgetType }
-        break
-      case "money":
-        value = widgetValue.trim()
-        if (!value) return
-        data = { ruble_color: widgetColor }
-        break
-      case "assignee":
-        value = widgetAssignee
-        if (!value) return
-        data = { mode: "assignee" }
-        break
-      default:
-        break
-    }
-
-    const ok = await onUpsertWidget({
-      task_id: task.id,
-      type: widgetType,
-      title,
-      value,
-      data,
-    })
-    if (ok) {
-      handleWidgetDialogOpenChange(false)
-    }
-  }
-
-  const handleWidgetDialogOpenChange = (nextOpen: boolean) => {
-    if (!nextOpen) {
-      setWidgetStep("select")
-    }
-    onWidgetDialogOpenChange(nextOpen)
   }
 
   if (!task) {
@@ -646,10 +557,10 @@ export function TaskDetailSheet({
                   </div>
                   <Separator />
 
-                  <div className="flex flex-col gap-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <h3 className="font-semibold">Виджеты</h3>
-                      <Button size="sm" variant="outline" onClick={() => handleWidgetDialogOpenChange(true)}>
+              <div className="flex flex-col gap-3">
+                <div className="flex items-center justify-between gap-2">
+                  <h3 className="font-semibold">Виджеты</h3>
+                      <Button size="sm" variant="outline" onClick={onAddWidgetRequest}>
                         <Plus className="mr-2 size-4" />
                         Добавить виджет
                       </Button>
@@ -699,151 +610,275 @@ export function TaskDetailSheet({
         </div>
       </SheetContent>
 
-      <Dialog open={widgetDialogOpen} onOpenChange={handleWidgetDialogOpenChange}>
-        <DialogContent className="sm:max-w-[760px]">
-          <DialogHeader>
-            <DialogTitle>Добавить виджет</DialogTitle>
-            <DialogDescription>Сначала выберите тип карточкой, потом заполните только нужные поля.</DialogDescription>
-          </DialogHeader>
-
-          {widgetStep === "select" ? (
-            <div className="grid gap-3 py-2 sm:grid-cols-2">
-              {WIDGET_OPTIONS.map((option) => {
-                const Icon = option.icon
-                return (
-                  <button
-                    key={option.type}
-                    type="button"
-                    onClick={() => handleWidgetTypeSelect(option.type)}
-                    className={cn(
-                      "group rounded-2xl border p-4 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md",
-                      "bg-gradient-to-br",
-                      option.className
-                    )}
-                  >
-                    <div className="flex items-start justify-between gap-3 text-white">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <Icon className="size-5" />
-                          <p className="font-semibold">{option.title}</p>
-                        </div>
-                        <p className="mt-2 text-sm/5 text-white/85">{option.description}</p>
-                      </div>
-                      <span className="rounded-full border border-white/30 bg-white/10 px-2 py-1 text-[11px] uppercase tracking-wide text-white/80">
-                        Выбрать
-                      </span>
-                    </div>
-                  </button>
-                )
-              })}
-            </div>
-          ) : (
-            <div className="grid gap-4 py-2">
-              <div className="rounded-2xl border bg-muted/30 p-4">
-                <div className="mb-3 flex items-center justify-between gap-2">
-                  <div>
-                    <p className="text-sm text-muted-foreground">Выбранный виджет</p>
-                  </div>
-                  <Button variant="ghost" size="sm" onClick={() => setWidgetStep("select")}>
-                    Изменить тип
-                  </Button>
-                </div>
-
-                {widgetType === "text" && (
-                  <div className="flex flex-col gap-2">
-                    <label className="text-sm font-medium">Текст</label>
-                    <Textarea value={widgetValue} onChange={(e) => setWidgetValue(e.target.value)} rows={4} placeholder="Введите текст" />
-                  </div>
-                )}
-
-                {widgetType === "date" && (
-                  <div className="flex flex-col gap-2">
-                    <label className="text-sm font-medium">Дата и время</label>
-                    <Input type="datetime-local" value={widgetDate} onChange={(e) => setWidgetDate(e.target.value)} />
-                  </div>
-                )}
-
-                {["link", "email", "phone", "fio"].includes(widgetType) && (
-                  <div className="flex flex-col gap-2">
-                    <label className="text-sm font-medium">
-                      {widgetType === "link" ? "Ссылка" : widgetType === "email" ? "Почта" : widgetType === "phone" ? "Телефон" : "ФИО"}
-                    </label>
-                    <Input
-                      value={widgetValue}
-                      onChange={(e) => setWidgetValue(e.target.value)}
-                      placeholder={
-                        widgetType === "link"
-                          ? "https://..."
-                          : widgetType === "email"
-                            ? "name@example.com"
-                            : widgetType === "phone"
-                              ? "+7 ..."
-                              : "Фамилия Имя"
-                      }
-                    />
-                  </div>
-                )}
-
-                {widgetType === "money" && (
-                  <div className="grid gap-4">
-                    <div className="flex flex-col gap-2">
-                      <label className="text-sm font-medium">Сумма</label>
-                      <Input value={widgetValue} onChange={(e) => setWidgetValue(e.target.value)} placeholder="10000" />
-                    </div>
-                    <div className="flex flex-col gap-2">
-                      <label className="text-sm font-medium">Цвет рубля</label>
-                      <div className="grid grid-cols-5 gap-2 sm:grid-cols-8">
-                        {RUBLE_COLOR_OPTIONS.map((color) => (
-                          <button
-                            key={color}
-                            type="button"
-                            onClick={() => setWidgetColor(color)}
-                            className={cn(
-                              "flex size-9 items-center justify-center rounded-full border transition-transform hover:scale-105",
-                              widgetColor === color && "ring-2 ring-primary ring-offset-2"
-                            )}
-                            style={{ backgroundColor: color }}
-                            title={color}
-                          >
-                            {widgetColor === color ? <span className="size-2.5 rounded-full bg-white" /> : null}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {widgetType === "assignee" && (
-                  <div className="flex flex-col gap-2">
-                    <label className="text-sm font-medium">Ответственный</label>
-                    <Select value={widgetAssignee} onValueChange={setWidgetAssignee}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Выберите пользователя" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {teamMembers.map((member) => (
-                          <SelectItem key={member.id} value={member.id}>
-                            {[member.last_name, member.first_name].filter(Boolean).join(" ")}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => handleWidgetDialogOpenChange(false)}>Отмена</Button>
-            {widgetStep === "form" ? (
-              <Button onClick={() => void handleWidgetSave()}>Сохранить</Button>
-            ) : (
-              <Button variant="ghost" onClick={() => handleWidgetDialogOpenChange(false)}>Закрыть</Button>
-            )}
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </Sheet>
+  )
+}
+
+interface TaskWidgetDialogProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  taskId: string | null
+  onUpsertWidget: (payload: { task_id: string; widget_id?: string; type: WidgetType; title: string; value?: string; data?: Record<string, unknown> | null }) => Promise<boolean> | boolean
+  teamMembers?: Array<{ id: string; first_name: string; last_name: string; img_url: string | null }>
+  onSaved?: () => void
+}
+
+export function TaskWidgetDialog({
+  open,
+  onOpenChange,
+  taskId,
+  onUpsertWidget,
+  teamMembers = [],
+  onSaved,
+}: TaskWidgetDialogProps) {
+  const [widgetStep, setWidgetStep] = useState<"select" | "form">("select")
+  const [widgetType, setWidgetType] = useState<WidgetType>("text")
+  const [widgetValue, setWidgetValue] = useState("")
+  const [widgetDate, setWidgetDate] = useState("")
+  const [widgetColor, setWidgetColor] = useState("#111111")
+  const [widgetAssignee, setWidgetAssignee] = useState("")
+
+  const resetForm = () => {
+    setWidgetStep("select")
+    setWidgetType("text")
+    setWidgetValue("")
+    setWidgetDate("")
+    setWidgetColor("#111111")
+    setWidgetAssignee("")
+  }
+
+  useEffect(() => {
+    if (!open) {
+      resetForm()
+    }
+  }, [open])
+
+  const handleWidgetTypeSelect = (type: WidgetType) => {
+    setWidgetType(type)
+    setWidgetStep("form")
+    setWidgetValue("")
+    setWidgetDate("")
+    setWidgetColor("#111111")
+    setWidgetAssignee("")
+  }
+
+  const handleSave = async () => {
+    if (!taskId) return
+
+    const title = getDefaultWidgetTitle(widgetType)
+    let value = ""
+    let data: Record<string, unknown> | null = null
+
+    switch (widgetType) {
+      case "text":
+        value = widgetValue.trim()
+        if (!value) return
+        break
+      case "date":
+        value = widgetDate ? new Date(widgetDate).toISOString() : ""
+        if (!value) return
+        data = { mode: "date" }
+        break
+      case "link":
+      case "email":
+      case "phone":
+      case "fio":
+        value = widgetValue.trim()
+        if (!value) return
+        data = { mode: widgetType }
+        break
+      case "money":
+        value = widgetValue.trim()
+        if (!value) return
+        data = { ruble_color: widgetColor }
+        break
+      case "assignee":
+        value = widgetAssignee
+        if (!value) return
+        data = { mode: "assignee" }
+        break
+      default:
+        break
+    }
+
+    const ok = await onUpsertWidget({
+      task_id: taskId,
+      type: widgetType,
+      title,
+      value,
+      data,
+    })
+    if (ok) {
+      onSaved?.()
+      onOpenChange(false)
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-[760px]">
+        <DialogHeader>
+          <DialogTitle>Добавить виджет</DialogTitle>
+          <DialogDescription>Сначала выберите карточку, потом заполните только нужные поля.</DialogDescription>
+        </DialogHeader>
+
+        {widgetStep === "select" ? (
+          <div className="grid gap-3 py-2 sm:grid-cols-2">
+            {WIDGET_OPTIONS.map((option) => {
+              const Icon = option.icon
+              return (
+                <button
+                  key={option.type}
+                  type="button"
+                  onClick={() => handleWidgetTypeSelect(option.type)}
+                  className={cn(
+                    "group rounded-2xl border p-4 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md",
+                    "bg-gradient-to-br",
+                    option.className
+                  )}
+                >
+                  <div className="flex items-start justify-between gap-3 text-white">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <Icon className="size-5" />
+                        <p className="font-semibold">{option.title}</p>
+                      </div>
+                      <p className="mt-2 text-sm/5 text-white/85">{option.description}</p>
+                    </div>
+                    <span className="rounded-full border border-white/30 bg-white/10 px-2 py-1 text-[11px] uppercase tracking-wide text-white/80">
+                      Выбрать
+                    </span>
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+        ) : (
+          <div className="grid gap-4 py-2">
+            <div className="rounded-2xl border bg-muted/30 p-4">
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <div />
+                <Button variant="ghost" size="sm" onClick={() => setWidgetStep("select")}>
+                  Изменить тип
+                </Button>
+              </div>
+
+              {widgetType === "text" && (
+                <div className="flex flex-col gap-2">
+                  <label className="text-sm font-medium">Текст</label>
+                  <Textarea value={widgetValue} onChange={(e) => setWidgetValue(e.target.value)} rows={4} placeholder="Введите текст" />
+                </div>
+              )}
+
+              {widgetType === "date" && (
+                <div className="flex flex-col gap-2">
+                  <label className="text-sm font-medium">Дата и время</label>
+                  <Input type="datetime-local" value={widgetDate} onChange={(e) => setWidgetDate(e.target.value)} />
+                </div>
+              )}
+
+              {["link", "email", "phone", "fio"].includes(widgetType) && (
+                <div className="flex flex-col gap-2">
+                  <label className="text-sm font-medium">
+                    {widgetType === "link" ? "Ссылка" : widgetType === "email" ? "Почта" : widgetType === "phone" ? "Телефон" : "ФИО"}
+                  </label>
+                  <Input
+                    value={widgetValue}
+                    onChange={(e) => setWidgetValue(e.target.value)}
+                    placeholder={
+                      widgetType === "link"
+                        ? "https://..."
+                        : widgetType === "email"
+                          ? "name@example.com"
+                          : widgetType === "phone"
+                            ? "+7 ..."
+                            : "Фамилия Имя"
+                    }
+                  />
+                </div>
+              )}
+
+              {widgetType === "money" && (
+                <div className="grid gap-4">
+                  <div className="flex flex-col gap-2">
+                    <label className="text-sm font-medium">Сумма</label>
+                    <Input value={widgetValue} onChange={(e) => setWidgetValue(e.target.value)} placeholder="10000" />
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    <label className="text-sm font-medium">Цвет рубля</label>
+                    <div className="grid grid-cols-5 gap-2 sm:grid-cols-8">
+                      {RUBLE_COLOR_OPTIONS.map((color) => (
+                        <button
+                          key={color}
+                          type="button"
+                          onClick={() => setWidgetColor(color)}
+                          className={cn(
+                            "flex size-9 items-center justify-center rounded-full border transition-transform hover:scale-105",
+                            widgetColor === color && "ring-2 ring-primary ring-offset-2"
+                          )}
+                          style={{ backgroundColor: color }}
+                          title={color}
+                        >
+                          {widgetColor === color ? <span className="size-2.5 rounded-full bg-white" /> : null}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {widgetType === "assignee" && (
+                <div className="flex flex-col gap-3">
+                  <label className="text-sm font-medium">Ответственный</label>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {teamMembers.map((member) => {
+                      const selected = widgetAssignee === member.id
+                      const initials = [member.first_name, member.last_name]
+                        .filter(Boolean)
+                        .map((part) => part[0]?.toUpperCase())
+                        .join("")
+                      return (
+                        <button
+                          key={member.id}
+                          type="button"
+                          onClick={() => setWidgetAssignee(member.id)}
+                          className={cn(
+                            "flex items-center gap-3 rounded-2xl border p-3 text-left transition-colors hover:bg-muted/50",
+                            selected && "border-primary bg-primary/5 ring-1 ring-primary"
+                          )}
+                        >
+                          <div className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-muted text-sm font-semibold">
+                            {member.img_url ? (
+                              <img src={member.img_url} alt="" className="size-full object-cover" />
+                            ) : (
+                              <span>{initials || "?"}</span>
+                            )}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm font-medium">
+                              {[member.last_name, member.first_name].filter(Boolean).join(" ") || "Пользователь"}
+                            </p>
+                            <p className="truncate text-xs text-muted-foreground">Нажмите, чтобы выбрать</p>
+                          </div>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Отмена</Button>
+          {widgetStep === "form" ? (
+            <Button onClick={() => void handleSave()}>Сохранить</Button>
+          ) : (
+            <Button variant="ghost" onClick={() => onOpenChange(false)}>Закрыть</Button>
+          )}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }

@@ -42,6 +42,8 @@ import { api } from "@/lib/api"
 import { useProjects, type ProjectDetail } from "@/hooks/use-projects"
 import { useBoards } from "@/hooks/use-boards"
 import { useTeams } from "@/hooks/use-teams"
+import { useUser } from "@/hooks/use-user"
+import { OnlyOfficeFileEditor, type ProjectOfficeFileItem } from "@/components/onlyoffice-file-editor"
 
 type BoardSort = "updated_desc" | "updated_asc" | "name_asc" | "name_desc"
 type ProjectCreateType = "folder" | "task_list" | "link" | "board" | "calendar" | "file"
@@ -145,6 +147,10 @@ function getProjectItemIcon(type: ProjectCreateType, fileKind?: ProjectGridItem[
   return Box
 }
 
+function isOfficeEditableFile(kind?: ProjectGridItem["file_kind"]): boolean {
+  return kind === "document" || kind === "spreadsheet" || kind === "presentation" || kind === "pdf" || kind === "text" || kind === "code"
+}
+
 function findProjectPath(items: NonNullable<ProjectDetail["items"]> | undefined, targetId: string): string[] {
   if (!items || items.length === 0) return []
 
@@ -198,6 +204,7 @@ export function ProjectPage() {
   const { teamLogin, projectId } = useParams()
   const navigate = useNavigate()
   const { activeTeam, storageUsage, refreshTeams, fetchStorageUsage } = useTeams()
+  const { user } = useUser()
   const { getProject, createFolder, renameItem, moveItem, deleteItem } = useProjects(teamLogin, { autoLoad: false })
   const { createBoard } = useBoards(teamLogin)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
@@ -233,6 +240,7 @@ export function ProjectPage() {
   const [previewItem, setPreviewItem] = useState<ProjectGridItem | null>(null)
   const [previewImageUseProxy, setPreviewImageUseProxy] = useState(false)
   const [fileImageFallbacks, setFileImageFallbacks] = useState<Record<string, boolean>>({})
+  const [officeItem, setOfficeItem] = useState<ProjectOfficeFileItem | null>(null)
 
   const storageOverview = storageUsage || (activeTeam ? {
     used_bytes: activeTeam.storage_used_bytes ?? Math.round((activeTeam.storage_used_gb ?? 0) * 1000000000),
@@ -284,6 +292,21 @@ export function ProjectPage() {
   useEffect(() => {
     setPreviewImageUseProxy(false)
   }, [previewItem?.id])
+
+  const openOfficeFile = (item: ProjectGridItem) => {
+    setPreviewItem(null)
+    setPreviewImageUseProxy(false)
+    setOfficeItem({
+      id: item.id,
+      project_item_id: item.project_item_id,
+      title: item.title,
+      file_kind: item.file_kind || null,
+      public_url: item.public_url || null,
+      original_name: item.original_name || null,
+      updated_at: item.updated_at || null,
+      mime_type: item.mime_type || null,
+    })
+  }
 
   const closeUploadDialog = () => {
     if (uploading) return
@@ -826,8 +849,12 @@ export function ProjectPage() {
                       return
                     }
                     if (item.type === "file") {
-                      setPreviewItem(item)
-                      setPreviewImageUseProxy(false)
+                      if (isOfficeEditableFile(item.file_kind)) {
+                        openOfficeFile(item)
+                      } else {
+                        setPreviewItem(item)
+                        setPreviewImageUseProxy(false)
+                      }
                       return
                     }
                     const href = getItemLink(item)
@@ -976,7 +1003,11 @@ export function ProjectPage() {
                     setCurrentFolderId(currentItem.id)
                   } else {
                     if (currentItem.type === "file") {
-                      setPreviewItem(currentItem)
+                      if (isOfficeEditableFile(currentItem.file_kind)) {
+                        openOfficeFile(currentItem)
+                      } else {
+                        setPreviewItem(currentItem)
+                      }
                       setContextMenu(null)
                       return
                     }
@@ -998,7 +1029,7 @@ export function ProjectPage() {
               {currentItem.type === "file" && currentItem.download_url && (
                 <button
                   className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm hover:bg-muted"
-                  onClick={() => {
+                onClick={() => {
                     window.open(currentItem.download_url || undefined, "_blank", "noreferrer")
                     setContextMenu(null)
                   }}
@@ -1295,6 +1326,18 @@ export function ProjectPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <OnlyOfficeFileEditor
+        open={Boolean(officeItem)}
+        teamLogin={teamLogin}
+        projectId={projectId || undefined}
+        item={officeItem}
+        user={user}
+        onClose={() => setOfficeItem(null)}
+        onSaved={async () => {
+          await refreshProject()
+        }}
+      />
 
       <Dialog open={Boolean(previewItem)} onOpenChange={(open) => !open && setPreviewItem(null)}>
         <DialogContent className="sm:max-w-[960px]">

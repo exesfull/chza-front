@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useNavigate, useParams } from "react-router-dom"
-import { CheckSquare, Copy, Database, FolderKanban, Link2, ListTodo, MoreVertical, Plus, QrCode, RotateCcw, Save, Shield, SquareStack, Trash2, Users, Link as LinkIcon, Sparkles } from "lucide-react"
+import { CheckSquare, Copy, Database, FolderKanban, Link2, ListTodo, MoreVertical, Plus, QrCode, RotateCcw, Save, Shield, SquareStack, Trash2, Users, Upload, Link as LinkIcon, Sparkles } from "lucide-react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -26,9 +26,9 @@ function buildTeamAvatarUrl(teamName: string) {
 export function TeamAdminPage() {
   const { teamLogin } = useParams()
   const navigate = useNavigate()
-  const { isAdmin, refreshTeams, checkTeamMembership } = useTeams()
+  const { isAdmin, refreshTeams, checkTeamMembership, fetchStorageUsage } = useTeams()
   const { user } = useUser()
-  const { data, loading, error, updateSettings, createInvite, disableInvite, deleteInvite, updateResources, createStorageKey: createStorageKeyRequest, deleteStorageKey, setMemberAdmin, removeMember } = useTeamAdmin(teamLogin)
+  const { data, loading, error, updateSettings, uploadImage, resetImage, createInvite, disableInvite, deleteInvite, updateResources, createStorageKey: createStorageKeyRequest, deleteStorageKey, setMemberAdmin, removeMember } = useTeamAdmin(teamLogin)
   const [section, setSection] = useState<Section>("general")
   const [name, setName] = useState("")
   const [description, setDescription] = useState("")
@@ -51,6 +51,7 @@ export function TeamAdminPage() {
   const [confirmMember, setConfirmMember] = useState<AdminMember | null>(null)
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState("")
+  const imageInputRef = useRef<HTMLInputElement | null>(null)
 
   useEffect(() => {
     if (data?.team) {
@@ -75,25 +76,33 @@ export function TeamAdminPage() {
   const saveTeam = () => run(async () => {
     await updateSettings({ name, description, img_url: image })
     await refreshTeams()
+    if (teamLogin) await fetchStorageUsage(teamLogin)
     if (teamLogin) await checkTeamMembership(teamLogin)
   }, "Настройки команды сохранены")
 
   const resetTeamImage = () => {
     const nextImage = buildTeamAvatarUrl(name)
-    setImage(nextImage)
     void run(async () => {
-      await updateSettings({ name, description, img_url: nextImage })
+      await resetImage()
       await refreshTeams()
+      if (teamLogin) await fetchStorageUsage(teamLogin)
       if (teamLogin) await checkTeamMembership(teamLogin)
+      setImage(nextImage)
     }, "Фото команды сброшено")
   }
 
   const handleImage = (file?: File) => {
     if (!file) return
     if (file.size > 1024 * 1024) { setMessage("Изображение должно быть не больше 1 МБ"); return }
-    const reader = new FileReader()
-    reader.onload = () => setImage(String(reader.result || ""))
-    reader.readAsDataURL(file)
+    void run(async () => {
+      const result = await uploadImage(file)
+      if (typeof result === "string" && result) {
+        setImage(result)
+      }
+      await refreshTeams()
+      if (teamLogin) await fetchStorageUsage(teamLogin)
+      if (teamLogin) await checkTeamMembership(teamLogin)
+    }, "Изображение команды обновлено")
   }
 
   if (loading) return <div className="p-6 text-sm text-muted-foreground">Загрузка управления командой...</div>
@@ -161,20 +170,21 @@ export function TeamAdminPage() {
         </CardHeader>
         <CardContent className="space-y-5">
           <div className="flex items-center gap-4">
-            <Avatar className="size-20"><AvatarImage src={image} /><AvatarFallback>{name.slice(0, 2).toUpperCase()}</AvatarFallback></Avatar>
-            <div className="space-y-3">
-              <div className="flex flex-wrap gap-2">
-                <label className="inline-flex cursor-pointer items-center rounded-md border px-3 py-2 text-sm font-medium hover:bg-muted">
-                  Выбрать изображение
-                  <input className="hidden" type="file" accept="image/*" onChange={(e) => handleImage(e.target.files?.[0])} />
-                </label>
-                <Button type="button" variant="outline" onClick={resetTeamImage}>
-                  <RotateCcw className="mr-2 size-4" />
-                  Сбросить
-                </Button>
+              <Avatar className="size-20"><AvatarImage src={image} /><AvatarFallback>{name.slice(0, 2).toUpperCase()}</AvatarFallback></Avatar>
+              <div className="space-y-3">
+                <div className="flex flex-wrap gap-2">
+                  <input ref={imageInputRef} className="hidden" type="file" accept="image/*" onChange={(e) => handleImage(e.target.files?.[0])} />
+                  <Button type="button" variant="outline" onClick={() => imageInputRef.current?.click()}>
+                    <Upload className="mr-2 size-4" />
+                    Изменить иконку
+                  </Button>
+                  <Button type="button" variant="outline" onClick={resetTeamImage}>
+                    <RotateCcw className="mr-2 size-4" />
+                    Сбросить
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">PNG, JPG, SVG, до 1 МБ</p>
               </div>
-              <p className="text-xs text-muted-foreground">PNG, JPG, SVG, до 1 МБ</p>
-            </div>
           </div>
           <div className="max-w-xl space-y-2"><label className="text-sm font-medium">Название</label><Input value={name} onChange={(e) => setName(e.target.value)} maxLength={120} /></div>
           <div className="max-w-2xl space-y-2"><label className="text-sm font-medium">Описание</label><Textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={5} /></div>

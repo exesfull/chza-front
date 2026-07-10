@@ -27,7 +27,6 @@ import {
   FileCode2,
   Presentation,
   FileSpreadsheet,
-  Eye,
   Download,
   X,
 } from "lucide-react"
@@ -102,6 +101,31 @@ function detectLocalFileKind(name: string, mimeType?: string | null): ProjectGri
   return "file"
 }
 
+function getFileKindLabel(kind?: ProjectGridItem["file_kind"] | null): string {
+  switch (kind) {
+    case "image":
+      return "Изображение"
+    case "video":
+      return "Видео"
+    case "text":
+      return "Текст"
+    case "archive":
+      return "Архив"
+    case "document":
+      return "Документ"
+    case "pdf":
+      return "PDF"
+    case "spreadsheet":
+      return "Таблица"
+    case "presentation":
+      return "Презентация"
+    case "code":
+      return "Код"
+    default:
+      return "Файл"
+  }
+}
+
 function getProjectItemIcon(type: ProjectCreateType, fileKind?: ProjectGridItem["file_kind"]) {
   if (type === "folder") return FolderPlus
   if (type === "task_list") return ListTodo
@@ -172,7 +196,7 @@ function mapApiProjectItems(items: NonNullable<ProjectDetail["items"]>): Project
 export function ProjectPage() {
   const { teamLogin, projectId } = useParams()
   const navigate = useNavigate()
-  const { activeTeam, storageUsage } = useTeams()
+  const { activeTeam, storageUsage, refreshTeams, fetchStorageUsage } = useTeams()
   const { getProject, createFolder, renameItem, moveItem, deleteItem } = useProjects(teamLogin, { autoLoad: false })
   const { createBoard } = useBoards(teamLogin)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
@@ -208,11 +232,11 @@ export function ProjectPage() {
   const [previewItem, setPreviewItem] = useState<ProjectGridItem | null>(null)
 
   const storageOverview = storageUsage || (activeTeam ? {
-    used_gb: activeTeam.storage_used_gb ?? 0,
-    limit_gb: activeTeam.storage_limit_gb ?? 1,
+    used_bytes: activeTeam.storage_used_bytes ?? Math.round((activeTeam.storage_used_gb ?? 0) * 1000000000),
+    limit_bytes: activeTeam.storage_limit_bytes ?? Math.round((activeTeam.storage_limit_gb ?? 1) * 1000000000),
     percent: activeTeam.storage_percent ?? 0,
   } : null)
-  const availableBytes = Math.max(0, Math.round(((storageOverview?.limit_gb ?? 1) - (storageOverview?.used_gb ?? 0)) * 1000000000))
+  const availableBytes = Math.max(0, (storageOverview?.limit_bytes ?? Math.round(1 * 1000000000)) - (storageOverview?.used_bytes ?? 0))
   const selectedUploadBytes = selectedFiles.reduce((sum, item) => sum + item.size, 0)
   const canUploadSelected = selectedUploadBytes <= availableBytes
   const canOpenUploadEntry = availableBytes > 0
@@ -291,8 +315,8 @@ export function ProjectPage() {
     setUploadMessage("")
 
     try {
-      const limitBytes = Math.max(0, Math.round((storageOverview?.limit_gb ?? 1) * 1000000000))
-      const usedBytes = Math.max(0, Math.round((storageOverview?.used_gb ?? 0) * 1000000000))
+      const limitBytes = Math.max(0, storageOverview?.limit_bytes ?? Math.round(1 * 1000000000))
+      const usedBytes = Math.max(0, storageOverview?.used_bytes ?? 0)
       const available = Math.max(0, limitBytes - usedBytes)
       const totalSelected = selectedFiles.reduce((sum, item) => sum + item.size, 0)
       if (totalSelected > available) {
@@ -370,6 +394,9 @@ export function ProjectPage() {
       }
 
       await refreshProject()
+      if (teamLogin) {
+        await Promise.all([refreshTeams(), fetchStorageUsage(teamLogin)])
+      }
       closeUploadDialog()
     } catch (error) {
       console.error("Failed to upload files:", error)
@@ -472,7 +499,7 @@ export function ProjectPage() {
       case "calendar":
         return "Календарь"
       case "file":
-        return "Файл"
+        return getFileKindLabel(item.file_kind)
       default:
         return "Доска"
     }
@@ -688,12 +715,6 @@ export function ProjectPage() {
               <Settings className="mr-2 size-4" />
               Настройки
             </Button>
-            {canOpenUploadEntry && (
-              <Button variant="outline" onClick={() => openUploadPicker(currentFolderId)}>
-                <UploadCloud className="mr-2 size-4" />
-                Загрузить
-              </Button>
-            )}
             <Button onClick={() => openCreate(undefined, currentFolderId)}>
               <Plus className="mr-2 size-4" />
               Создать
@@ -809,12 +830,17 @@ export function ProjectPage() {
                       <Icon className="size-5" />
                     </div>
                     <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
-                      {getItemKindLabel(item)}
+                      {item.type === "file" ? getFileKindLabel(item.file_kind) : getItemKindLabel(item)}
                     </span>
                   </div>
+                  {item.type === "file" && item.file_kind === "image" && item.preview_url && (
+                    <div className="mt-3 overflow-hidden rounded-xl border bg-muted/30">
+                      <img src={item.preview_url} alt={item.title} className="h-28 w-full object-cover" />
+                    </div>
+                  )}
                   <div className="mt-3 min-w-0 flex-1">
                     <div className="truncate font-medium">{item.title}</div>
-                    {item.description ? (
+                    {item.type !== "file" && item.description ? (
                       <div className="mt-1 line-clamp-2 text-xs text-muted-foreground">
                         {item.description}
                       </div>
@@ -825,7 +851,7 @@ export function ProjectPage() {
                       {item.type === "folder" ? (
                         <span>{item.children.length} внутри</span>
                       ) : item.type === "file" ? (
-                        <span>{formatFileSize(item.size_bytes)}</span>
+                        <span>{item.type === "file" ? formatFileSize(item.size_bytes) : ""}</span>
                       ) : (
                         <span />
                       )}
@@ -1127,7 +1153,7 @@ export function ProjectPage() {
           <div className="flex flex-col gap-3">
             <div className="flex items-center justify-between text-sm text-muted-foreground">
               <span>{selectedFiles.length} файл(ов)</span>
-              <span>{formatFileSize(selectedUploadBytes)} из {formatFileSize(availableBytes)}</span>
+                <span>{formatFileSize(selectedUploadBytes)} из {formatFileSize(availableBytes)}</span>
             </div>
             <div className="h-2 overflow-hidden rounded-full bg-muted">
               <div
@@ -1211,9 +1237,13 @@ export function ProjectPage() {
           {previewItem?.type === "file" ? (
             <div className="space-y-4">
               <div className="rounded-2xl border bg-muted/20 p-3">
-                <div className="mb-2 flex items-center justify-between text-sm text-muted-foreground">
-                  <span>{previewItem.original_name || previewItem.title}</span>
-                  <span>{formatFileSize(previewItem.size_bytes)}</span>
+                <div className="mb-2 flex items-center justify-end gap-2 text-sm text-muted-foreground">
+                  {previewItem.download_url && (
+                    <Button size="sm" variant="outline" onClick={() => window.open(previewItem.download_url || undefined, "_blank", "noreferrer")}>
+                      <Download className="mr-2 size-4" />
+                      Скачать
+                    </Button>
+                  )}
                 </div>
                 {previewItem.file_kind === "image" && previewItem.preview_url ? (
                   <img src={previewItem.preview_url} alt={previewItem.title} className="max-h-[70vh] w-full rounded-2xl object-contain" />
@@ -1225,20 +1255,6 @@ export function ProjectPage() {
                   <iframe src={previewItem.preview_url} className="h-[70vh] w-full rounded-2xl border-0" />
                 ) : (
                   <div className="flex h-48 items-center justify-center text-sm text-muted-foreground">Предпросмотр недоступен</div>
-                )}
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {previewItem.download_url && (
-                  <Button variant="outline" onClick={() => window.open(previewItem.download_url || undefined, "_blank", "noreferrer")}>
-                    <Download className="mr-2 size-4" />
-                    Скачать
-                  </Button>
-                )}
-                {previewItem.download_url && (
-                  <Button onClick={() => window.open(previewItem.download_url || undefined, "_blank", "noreferrer")}>
-                    <Eye className="mr-2 size-4" />
-                    Открыть
-                  </Button>
                 )}
               </div>
             </div>

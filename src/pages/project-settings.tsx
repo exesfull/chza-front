@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { Link, useNavigate, useParams } from "react-router-dom"
 import { Archive, ChevronRight, Image as ImageIcon, Save, Settings, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -6,11 +6,13 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
 import { useProjects, type ProjectDetail } from "@/hooks/use-projects"
+import { useTeams } from "@/hooks/use-teams"
 
 export function ProjectSettingsPage() {
   const { teamLogin, projectId } = useParams()
   const navigate = useNavigate()
-  const { getProject, updateProject, deleteProject } = useProjects(teamLogin, { autoLoad: false })
+  const { refreshTeams, fetchStorageUsage } = useTeams()
+  const { getProject, updateProject, uploadProjectImage, resetProjectImage, deleteProject } = useProjects(teamLogin, { autoLoad: false })
   const [project, setProject] = useState<ProjectDetail | null>(null)
   const [name, setName] = useState("")
   const [description, setDescription] = useState("")
@@ -20,6 +22,7 @@ export function ProjectSettingsPage() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState("")
   const [saveSuccess, setSaveSuccess] = useState(false)
+  const imageInputRef = useRef<HTMLInputElement | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -81,6 +84,45 @@ export function ProjectSettingsPage() {
       setError("Не удалось сохранить проект")
     } finally {
       setSaving(false)
+    }
+  }
+
+  const handleImageUpload = async (file?: File) => {
+    if (!projectId || !file) return
+    if (file.size > 5 * 1024 * 1024) {
+      setError("Изображение должно быть не больше 5 МБ")
+      return
+    }
+
+    try {
+      const updated = await uploadProjectImage(projectId, file)
+      if (updated) {
+        setProject((prev) => prev ? { ...prev, img_url: updated.img_url } : prev)
+        setImgUrl(updated.img_url || "")
+        if (teamLogin) {
+          await Promise.all([refreshTeams(), fetchStorageUsage(teamLogin)])
+        }
+      }
+    } catch (uploadError) {
+      console.error("Failed to upload project image:", uploadError)
+      setError("Не удалось загрузить изображение")
+    }
+  }
+
+  const handleResetImage = async () => {
+    if (!projectId) return
+    try {
+      const updated = await resetProjectImage(projectId)
+      if (updated) {
+        setProject((prev) => prev ? { ...prev, img_url: updated.img_url } : prev)
+        setImgUrl(updated.img_url || "")
+        if (teamLogin) {
+          await Promise.all([refreshTeams(), fetchStorageUsage(teamLogin)])
+        }
+      }
+    } catch (resetError) {
+      console.error("Failed to reset project image:", resetError)
+      setError("Не удалось сбросить изображение")
     }
   }
 
@@ -151,11 +193,20 @@ export function ProjectSettingsPage() {
                 </div>
               )}
             </div>
-            <Input
-              placeholder="URL изображения"
-              value={imgUrl}
-              onChange={(e) => setImgUrl(e.target.value)}
-            />
+            <input ref={imageInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => {
+              void handleImageUpload(e.target.files?.[0])
+              e.target.value = ""
+            }} />
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" variant="outline" onClick={() => imageInputRef.current?.click()}>
+                <ImageIcon className="mr-2 size-4" />
+                Изменить
+              </Button>
+              <Button type="button" variant="outline" onClick={() => void handleResetImage()}>
+                <Trash2 className="mr-2 size-4" />
+                Сбросить
+              </Button>
+            </div>
           </div>
 
           <div className="flex flex-col gap-2">

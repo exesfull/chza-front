@@ -90,9 +90,15 @@ export function TeamsPage() {
   }, [activeTeam])
 
   const sortedTeams = sortTeams(teams, sortBy)
-  const usedGb = activeTeam?.storage_used_gb ?? 0
-  const limitGb = activeTeam?.storage_limit_gb ?? 1
+  const usedBytes = activeTeam?.storage_used_bytes ?? 0
+  const limitBytes = activeTeam?.storage_limit_bytes ?? Math.round((activeTeam?.storage_limit_gb ?? 1) * 1000000000)
   const percent = activeTeam?.storage_percent ?? 0
+  const formatSize = (bytes: number) => {
+    if (bytes < 1024) return `${bytes} Б`
+    if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} КБ`
+    if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1).replace(/\.0$/, "")} МБ`
+    return `${(bytes / (1024 * 1024 * 1024)).toFixed(2).replace(/\.0+$/, "").replace(/\.([1-9])0$/, ".$1")} ГБ`
+  }
 
   const handleSelectTeam = (teamLogin: string) => {
     navigate(`/teams/${teamLogin}`)
@@ -159,8 +165,8 @@ export function TeamsPage() {
           {activeTeam && (
             <div className="mb-4 rounded-3xl bg-slate-950 p-4 text-white shadow-lg">
               <div className="mb-2 flex items-center justify-between text-sm font-medium">
-                <span>{String(Number(usedGb.toFixed(2)))} ГБ</span>
-                <span>{String(Number(limitGb.toFixed(2)))} ГБ</span>
+                <span>{formatSize(usedBytes)}</span>
+                <span>{formatSize(limitBytes)}</span>
               </div>
               <div className="h-3 overflow-hidden rounded-full bg-white/15">
                 <div className="h-full rounded-full bg-white/70 transition-all" style={{ width: `${Math.min(100, percent)}%` }} />

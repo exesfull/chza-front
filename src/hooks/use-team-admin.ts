@@ -111,6 +111,22 @@ export function useTeamAdmin(teamLogin?: string) {
   return {
     data, loading, error, refresh,
     updateSettings: (payload: { name: string; description: string; img_url: string }) => post("updateSettings", payload),
+    uploadImage: async (image: File) => {
+      if (!teamLogin) throw new Error("teamLogin_required")
+      const body = new FormData()
+      body.append("team_login", teamLogin)
+      body.append("image", image)
+      const response = await api.post(`/main/team/uploadImage/?team_login=${teamLogin}`, body, {
+        headers: { "Content-Type": "multipart/form-data" },
+      })
+      await refresh()
+      return (response.data?.data?.image_url || response.data?.data?.team?.img_url || "") as string
+    },
+    resetImage: async () => {
+      const ok = await post("resetImage", {})
+      if (!ok) throw new Error("reset_image_failed")
+      return true
+    },
     createInvite: (payload: { name: string; max_uses?: number }) => post("createInvite", payload),
     disableInvite: (inviteId: string) => post("disableInvite", { invite_id: inviteId }),
     deleteInvite: (inviteId: string) => post("deleteInvite", { invite_id: inviteId }),

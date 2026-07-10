@@ -237,6 +237,45 @@ export function useProjects(teamLogin?: string, options?: { autoLoad?: boolean }
     return null
   }, [teamLogin])
 
+  const uploadProjectImage = useCallback(async (projectId: string, image: File) => {
+    if (!teamLogin) {
+      return null
+    }
+
+    const form = new FormData()
+    form.append("project_id", projectId)
+    form.append("image", image)
+
+    const { data } = await api.post(`/main/project/uploadImage/?team_login=${teamLogin}`, form, {
+      headers: { "Content-Type": "multipart/form-data" },
+    })
+
+    if (data.status && data.data) {
+      return data.data as ProjectDetail
+    }
+
+    return null
+  }, [teamLogin])
+
+  const resetProjectImage = useCallback(async (projectId: string) => {
+    if (!teamLogin) {
+      return null
+    }
+
+    const form = new URLSearchParams()
+    form.append("project_id", projectId)
+
+    const { data } = await api.post(`/main/project/resetImage/?team_login=${teamLogin}`, form, {
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    })
+
+    if (data.status && data.data) {
+      return data.data as ProjectDetail
+    }
+
+    return null
+  }, [teamLogin])
+
   const deleteProject = useCallback(async (projectId: string) => {
     if (!teamLogin) {
       return false
@@ -273,12 +312,14 @@ export function useProjects(teamLogin?: string, options?: { autoLoad?: boolean }
       getProject,
       createProject,
       updateProject,
+      uploadProjectImage,
+      resetProjectImage,
       deleteProject,
       createFolder,
       renameItem,
       moveItem,
       deleteItem,
     }),
-    [projects, loading, refreshProjects, getProject, createProject, updateProject, deleteProject, createFolder, renameItem, moveItem, deleteItem]
+    [projects, loading, refreshProjects, getProject, createProject, updateProject, uploadProjectImage, resetProjectImage, deleteProject, createFolder, renameItem, moveItem, deleteItem]
   )
 }

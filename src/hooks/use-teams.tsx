@@ -28,8 +28,10 @@ export interface TeamMembership {
 }
 
 export interface StorageUsage {
+  used_bytes: number
   used_gb: number
   limit_gb: number
+  limit_bytes: number
   percent: number
 }
 
@@ -92,13 +94,15 @@ export function TeamsProvider({ children }: { children: ReactNode }) {
   const fetchStorageUsage = useCallback(async (teamLogin: string) => {
     try {
       const { data } = await api.get(`/main/team/getStorageOverview/?team_login=${teamLogin}`)
-      if (data.status && data.data) {
-        setStorageUsage({
-          used_gb: Number(data.data.used_gb || 0),
-          limit_gb: Number(data.data.limit_gb || 1),
-          percent: Number(data.data.percent || 0),
-        })
-      }
+        if (data.status && data.data) {
+          setStorageUsage({
+            used_bytes: Number(data.data.used_bytes || 0),
+            used_gb: Number(data.data.used_gb || 0),
+            limit_gb: Number(data.data.limit_gb || 1),
+            limit_bytes: Number(data.data.limit_bytes || 0),
+            percent: Number(data.data.percent || 0),
+          })
+        }
     } catch (error) {
       if ((error as { response?: { status?: number } })?.response?.status !== 401) {
         console.error("Failed to fetch storage usage:", error)

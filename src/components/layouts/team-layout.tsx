@@ -29,7 +29,7 @@ function Skeleton() {
 
 export function TeamLayout() {
   const { teamLogin } = useParams()
-  const { teams, setActiveTeam, checkTeamMembership, teamMembership } = useTeams()
+  const { teams, setActiveTeam, checkTeamMembership, fetchStorageUsage, teamMembership } = useTeams()
   const [switching, setSwitching] = useState(false)
   const lastCheckedTeamLogin = useRef<string | null>(null)
 
@@ -44,8 +44,9 @@ export function TeamLayout() {
       if (team) {
         setActiveTeam(team)
       }
+      fetchStorageUsage(teamLogin)
     }
-  }, [teamLogin, teams, setActiveTeam, checkTeamMembership])
+  }, [teamLogin, teams, setActiveTeam, checkTeamMembership, fetchStorageUsage])
 
   useEffect(() => {
     if (teamMembership?.team?.title) document.title = teamMembership.team.title;

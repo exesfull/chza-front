@@ -46,8 +46,8 @@ export function TeamAdminPage() {
   const [storageKeyAccessKey, setStorageKeyAccessKey] = useState("")
   const [storageKeySecretKey, setStorageKeySecretKey] = useState("")
   const [storageKeyBucket, setStorageKeyBucket] = useState("")
-  const [storageKeyEndpoint, setStorageKeyEndpoint] = useState("https://s3.regru.cloud")
-  const [storageKeyPublicUrl, setStorageKeyPublicUrl] = useState("https://chza.s3.regru.cloud/")
+  const [storageKeyEndpoint, setStorageKeyEndpoint] = useState("https://s3.example.com")
+  const [storageKeyPublicUrl, setStorageKeyPublicUrl] = useState("https://files.example.com/")
   const [confirmMember, setConfirmMember] = useState<AdminMember | null>(null)
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState("")
@@ -136,8 +136,8 @@ export function TeamAdminPage() {
       setStorageKeyAccessKey("")
       setStorageKeySecretKey("")
       setStorageKeyBucket("")
-      setStorageKeyEndpoint("https://s3.regru.cloud")
-      setStorageKeyPublicUrl("https://chza.s3.regru.cloud/")
+      setStorageKeyEndpoint("https://s3.example.com")
+      setStorageKeyPublicUrl("https://files.example.com/")
     }, "Ключ S3 создан")
   }
 
@@ -314,13 +314,13 @@ export function TeamAdminPage() {
                   <label className="text-sm font-medium">S3 ключ</label>
                   <Select value={storageKeyId || "__global__"} onValueChange={(value) => setStorageKeyId(value === "__global__" ? "" : value)}>
                     <SelectTrigger>
-                      <SelectValue placeholder="Глобальный S3" />
+                      <SelectValue placeholder="S3-chza" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="__global__">Глобальный S3</SelectItem>
+                      <SelectItem value="__global__">S3-chza</SelectItem>
                       {(data.storage_keys || []).map((key: StorageS3Key) => (
                         <SelectItem key={key.id} value={key.id}>
-                          {key.name}{key.is_global ? " (global)" : ""}
+                          {key.name}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -340,13 +340,13 @@ export function TeamAdminPage() {
               </div>
 
               <div className="rounded-2xl border bg-muted/20 p-4 text-sm">
-                <div className="flex items-center justify-between gap-4">
-                  <div>
-                    <p className="font-medium">Активный S3</p>
-                    <p className="text-muted-foreground">
-                      {data.storage?.s3_key ? data.storage.s3_key.name : "Глобальный S3"}
-                    </p>
-                  </div>
+                  <div className="flex items-center justify-between gap-4">
+                    <div>
+                      <p className="font-medium">Активный S3</p>
+                      <p className="text-muted-foreground">
+                      {data.storage?.s3_key ? data.storage.s3_key.name : "S3-chza"}
+                      </p>
+                    </div>
                   <Badge variant="outline">{data.storage?.files_count || 0} файлов</Badge>
                 </div>
                 <div className="mt-3 grid gap-2 text-xs text-muted-foreground">
@@ -374,13 +374,11 @@ export function TeamAdminPage() {
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
                           <span className="font-medium">{key.name}</span>
-                          {key.is_global ? <Badge>Global</Badge> : <Badge variant="secondary">Team</Badge>}
+                          {key.is_global ? <Badge>S3-chza</Badge> : <Badge variant="secondary">Team</Badge>}
                         </div>
                         <div className="mt-2 grid gap-1 text-xs text-muted-foreground">
                           <div>Клиент: {key.client_name}</div>
                           <div>Bucket: {key.bucket_name}</div>
-                          <div className="truncate">Endpoint: {key.endpoint_url}</div>
-                          <div className="truncate">Public: {key.public_url}</div>
                         </div>
                       </div>
                       {!key.is_global && (

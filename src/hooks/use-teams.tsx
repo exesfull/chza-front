@@ -27,6 +27,12 @@ export interface TeamMembership {
   }
 }
 
+export interface StorageUsage {
+  used_gb: number
+  limit_gb: number
+  percent: number
+}
+
 export type SortBy = "name_asc" | "name_desc" | "date_asc" | "date_desc"
 
 interface TeamsContextType {
@@ -37,6 +43,8 @@ interface TeamsContextType {
   setActiveTeam: (team: TeamInfo | null) => void
   teamMembership: TeamMembership | null
   checkTeamMembership: (teamLogin: string) => Promise<void>
+  storageUsage: StorageUsage | null
+  fetchStorageUsage: (teamLogin: string) => Promise<void>
   isAdmin: boolean
 }
 
@@ -47,6 +55,7 @@ export function TeamsProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true)
   const [activeTeam, setActiveTeam] = useState<TeamInfo | null>(null)
   const [teamMembership, setTeamMembership] = useState<TeamMembership | null>(null)
+  const [storageUsage, setStorageUsage] = useState<StorageUsage | null>(null)
 
   const refreshTeams = async () => {
     try {
@@ -80,6 +89,23 @@ export function TeamsProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
+  const fetchStorageUsage = useCallback(async (teamLogin: string) => {
+    try {
+      const { data } = await api.get(`/main/team/getStorageOverview/?team_login=${teamLogin}`)
+      if (data.status && data.data) {
+        setStorageUsage({
+          used_gb: Number(data.data.used_gb || 0),
+          limit_gb: Number(data.data.limit_gb || 1),
+          percent: Number(data.data.percent || 0),
+        })
+      }
+    } catch (error) {
+      if ((error as { response?: { status?: number } })?.response?.status !== 401) {
+        console.error("Failed to fetch storage usage:", error)
+      }
+    }
+  }, [])
+
   useEffect(() => {
     refreshTeams()
   }, [])
@@ -87,8 +113,8 @@ export function TeamsProvider({ children }: { children: ReactNode }) {
   const isAdmin = teamMembership?.membership?.is_admin ?? false
 
   const value = useMemo(
-    () => ({ teams, loading, refreshTeams, activeTeam, setActiveTeam, teamMembership, checkTeamMembership, isAdmin }),
-    [teams, loading, activeTeam, teamMembership, isAdmin, checkTeamMembership]
+    () => ({ teams, loading, refreshTeams, activeTeam, setActiveTeam, teamMembership, checkTeamMembership, storageUsage, fetchStorageUsage, isAdmin }),
+    [teams, loading, activeTeam, teamMembership, storageUsage, isAdmin, checkTeamMembership, fetchStorageUsage]
   )
 
   return (

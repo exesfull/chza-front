@@ -12,7 +12,6 @@ import {
   Link2,
   CalendarDays,
   Bot,
-  Shield,
   SquareStack,
 } from "lucide-react"
 
@@ -79,13 +78,6 @@ const navMainBase: NavItem[] = [
   {
     title: "separator",
     url: "",
-  },
-  {
-    title: "Управление командой",
-    url: "admin",
-    icon: Shield,
-    isActive: false,
-    adminOnly: true,
   },
 ]
 

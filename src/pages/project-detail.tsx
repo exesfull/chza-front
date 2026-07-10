@@ -230,6 +230,8 @@ export function ProjectPage() {
   const [uploadProgress, setUploadProgress] = useState<Record<string, number>>({})
   const [dragActive, setDragActive] = useState(false)
   const [previewItem, setPreviewItem] = useState<ProjectGridItem | null>(null)
+  const [previewImageUseProxy, setPreviewImageUseProxy] = useState(false)
+  const [fileImageFallbacks, setFileImageFallbacks] = useState<Record<string, boolean>>({})
 
   const storageOverview = storageUsage || (activeTeam ? {
     used_bytes: activeTeam.storage_used_bytes ?? Math.round((activeTeam.storage_used_gb ?? 0) * 1000000000),
@@ -273,6 +275,14 @@ export function ProjectPage() {
   useEffect(() => {
     document.title = project?.name ? `Проект: ${project.name}` : "Проект"
   }, [project])
+
+  useEffect(() => {
+    setFileImageFallbacks({})
+  }, [projectId])
+
+  useEffect(() => {
+    setPreviewImageUseProxy(false)
+  }, [previewItem?.id])
 
   const closeUploadDialog = () => {
     if (uploading) return
@@ -795,7 +805,10 @@ export function ProjectPage() {
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
             {visibleItems.map((item) => {
               const Icon = getProjectItemIcon(item.type, item.file_kind)
-              const imageSrc = item.preview_url || item.public_url || ""
+              const useProxy = fileImageFallbacks[item.id] || false
+              const imageSrc = useProxy
+                ? (item.preview_url || item.public_url || "")
+                : (item.public_url || item.preview_url || "")
               const isImageFile = item.type === "file" && item.file_kind === "image" && Boolean(imageSrc)
               const kindLabel = item.type === "file" ? getFileKindLabel(item.file_kind) : getItemKindLabel(item)
               return (
@@ -810,6 +823,7 @@ export function ProjectPage() {
                     }
                     if (item.type === "file") {
                       setPreviewItem(item)
+                      setPreviewImageUseProxy(false)
                       return
                     }
                     const href = getItemLink(item)
@@ -831,9 +845,27 @@ export function ProjectPage() {
                   {isImageFile ? (
                     <>
                       <div className="absolute inset-0">
-                        <img src={imageSrc} alt={item.title} className="h-full w-full scale-110 object-cover blur-2xl brightness-75" />
+                        <img
+                          src={imageSrc}
+                          alt={item.title}
+                          className="h-full w-full scale-110 object-cover blur-2xl brightness-75"
+                          onError={() => {
+                            if (!useProxy && item.preview_url) {
+                              setFileImageFallbacks((prev) => ({ ...prev, [item.id]: true }))
+                            }
+                          }}
+                        />
                         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/45 to-black/10" />
-                        <img src={imageSrc} alt={item.title} className="absolute inset-0 h-full w-full object-contain p-4" />
+                        <img
+                          src={imageSrc}
+                          alt={item.title}
+                          className="absolute inset-0 h-full w-full object-contain p-4"
+                          onError={() => {
+                            if (!useProxy && item.preview_url) {
+                              setFileImageFallbacks((prev) => ({ ...prev, [item.id]: true }))
+                            }
+                          }}
+                        />
                       </div>
                       <div className="relative z-10 flex flex-1 flex-col justify-between p-4">
                         <div className="flex items-start justify-between gap-3">
@@ -1273,7 +1305,16 @@ export function ProjectPage() {
                   )}
                 </div>
                 {previewItem.file_kind === "image" && (previewItem.preview_url || previewItem.public_url) ? (
-                  <img src={previewItem.preview_url || previewItem.public_url || ""} alt={previewItem.title} className="max-h-[70vh] w-full rounded-2xl object-contain" />
+                  <img
+                    src={previewImageUseProxy ? (previewItem.preview_url || previewItem.public_url || "") : (previewItem.public_url || previewItem.preview_url || "")}
+                    alt={previewItem.title}
+                    className="max-h-[70vh] w-full rounded-2xl object-contain"
+                    onError={() => {
+                      if (!previewImageUseProxy && previewItem.preview_url) {
+                        setPreviewImageUseProxy(true)
+                      }
+                    }}
+                  />
                 ) : previewItem.file_kind === "video" && (previewItem.preview_url || previewItem.public_url) ? (
                   <video src={previewItem.preview_url || previewItem.public_url || ""} controls className="max-h-[70vh] w-full rounded-2xl" />
                 ) : previewItem.file_kind === "pdf" && (previewItem.preview_url || previewItem.public_url) ? (

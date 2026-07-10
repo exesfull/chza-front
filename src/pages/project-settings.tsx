@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from "react-router-dom"
 import { Archive, ChevronRight, Image as ImageIcon, Save, Settings, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Skeleton } from "@/components/ui/skeleton"
 import { Textarea } from "@/components/ui/textarea"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
 import { useProjects, type ProjectDetail } from "@/hooks/use-projects"
@@ -22,6 +23,7 @@ export function ProjectSettingsPage() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState("")
   const [saveSuccess, setSaveSuccess] = useState(false)
+  const [imageLoaded, setImageLoaded] = useState(false)
   const imageInputRef = useRef<HTMLInputElement | null>(null)
 
   useEffect(() => {
@@ -38,6 +40,7 @@ export function ProjectSettingsPage() {
         setDescription(data.description || "")
         setImgUrl(data.img_url || "")
         setIsArchived(data.is_archived)
+        setImageLoaded(false)
       }
     }
 
@@ -99,6 +102,7 @@ export function ProjectSettingsPage() {
       if (updated) {
         setProject((prev) => prev ? { ...prev, img_url: updated.img_url } : prev)
         setImgUrl(updated.img_url || "")
+        setImageLoaded(false)
         if (teamLogin) {
           await Promise.all([refreshTeams(), fetchStorageUsage(teamLogin)])
         }
@@ -116,6 +120,7 @@ export function ProjectSettingsPage() {
       if (updated) {
         setProject((prev) => prev ? { ...prev, img_url: updated.img_url } : prev)
         setImgUrl(updated.img_url || "")
+        setImageLoaded(false)
         if (teamLogin) {
           await Promise.all([refreshTeams(), fetchStorageUsage(teamLogin)])
         }
@@ -185,8 +190,15 @@ export function ProjectSettingsPage() {
           <div className="flex flex-col gap-2">
             <label className="text-sm font-medium">Обложка проекта</label>
             <div className="relative h-40 overflow-hidden rounded-xl border bg-muted/20">
+              {!imageLoaded && imgUrl && <Skeleton className="absolute inset-0" />}
               {imgUrl ? (
-                <img src={imgUrl} alt={name} className="h-full w-full object-cover" />
+                <img
+                  src={imgUrl}
+                  alt={name}
+                  className="h-full w-full object-cover"
+                  onLoad={() => setImageLoaded(true)}
+                  onError={() => setImageLoaded(false)}
+                />
               ) : (
                 <div className="flex h-full items-center justify-center">
                   <ImageIcon className="size-10 text-muted-foreground" />

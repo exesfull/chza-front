@@ -795,6 +795,8 @@ export function ProjectPage() {
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
             {visibleItems.map((item) => {
               const Icon = getProjectItemIcon(item.type, item.file_kind)
+              const isImageFile = item.type === "file" && item.file_kind === "image" && Boolean(item.preview_url)
+              const kindLabel = item.type === "file" ? getFileKindLabel(item.file_kind) : getItemKindLabel(item)
               return (
                 <button
                   key={item.id}
@@ -822,54 +824,78 @@ export function ProjectPage() {
                     e.stopPropagation()
                     setContextMenu({ x: e.clientX, y: e.clientY, itemId: item.id, parentId: item.parent_id })
                   }}
-                  className="group flex flex-col rounded-2xl border bg-background p-4 text-left transition-colors hover:bg-muted/40"
+                  className={`group relative flex min-h-[220px] flex-col overflow-hidden rounded-3xl border text-left transition-all hover:-translate-y-0.5 hover:shadow-lg ${isImageFile ? "border-transparent bg-zinc-950/90 text-white shadow-xl" : "bg-background p-4 hover:bg-muted/40"}`}
                   style={{ marginLeft: item.depth ? `${Math.min(item.depth, 3) * 8}px` : undefined }}
                 >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                      <Icon className="size-5" />
-                    </div>
-                    <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
-                      {item.type === "file" ? getFileKindLabel(item.file_kind) : getItemKindLabel(item)}
-                    </span>
-                  </div>
-                  {item.type === "file" && item.file_kind === "image" && item.preview_url && (
-                    <div className="mt-3 overflow-hidden rounded-xl border bg-muted/30">
-                      <img src={item.preview_url} alt={item.title} className="h-28 w-full object-cover" />
-                    </div>
-                  )}
-                  <div className="mt-3 min-w-0 flex-1">
-                    <div className="truncate font-medium">{item.title}</div>
-                    {item.type !== "file" && item.description ? (
-                      <div className="mt-1 line-clamp-2 text-xs text-muted-foreground">
-                        {item.description}
+                  {isImageFile ? (
+                    <>
+                      <div className="absolute inset-0">
+                        <img src={item.preview_url || ""} alt={item.title} className="h-full w-full scale-110 object-cover blur-2xl brightness-75" />
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/45 to-black/10" />
+                        <img src={item.preview_url || ""} alt={item.title} className="absolute inset-0 h-full w-full object-contain p-4" />
                       </div>
-                    ) : null}
-                  </div>
-                  <div className="mt-3 flex items-center justify-between gap-2 text-xs text-muted-foreground">
-                    <div className="flex items-center gap-2">
-                      {item.type === "folder" ? (
-                        <span>{item.children.length} внутри</span>
-                      ) : item.type === "file" ? (
-                        <span>{item.type === "file" ? formatFileSize(item.size_bytes) : ""}</span>
-                      ) : (
-                        <span />
-                      )}
-                      {item.type === "link" && getItemLink(item) && (
-                        <button
-                          type="button"
-                          className="rounded-full border px-3 py-1 text-[11px] font-medium hover:bg-muted"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            window.open(getItemLink(item), "_blank", "noreferrer")
-                          }}
-                        >
-                          Перейти
-                        </button>
-                      )}
-                    </div>
-                    <span>{formatDate(item.updated_at)}</span>
-                  </div>
+                      <div className="relative z-10 flex flex-1 flex-col justify-between p-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-white/15 text-white backdrop-blur-md">
+                            <Icon className="size-5" />
+                          </div>
+                          <span className="rounded-full border border-white/20 bg-white/10 px-2 py-0.5 text-[10px] uppercase tracking-wide text-white/90 backdrop-blur-md">
+                            {kindLabel}
+                          </span>
+                        </div>
+                        <div className="mt-auto space-y-2">
+                          <div className="truncate text-lg font-semibold">{item.title}</div>
+                          <div className="flex items-center justify-between gap-2 text-xs text-white/70">
+                            <span>{formatFileSize(item.size_bytes)}</span>
+                            <span>{formatDate(item.updated_at)}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                          <Icon className="size-5" />
+                        </div>
+                        <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+                          {kindLabel}
+                        </span>
+                      </div>
+                      <div className="mt-3 min-w-0 flex-1">
+                        <div className="truncate font-medium">{item.title}</div>
+                        {item.type !== "file" && item.description ? (
+                          <div className="mt-1 line-clamp-2 text-xs text-muted-foreground">
+                            {item.description}
+                          </div>
+                        ) : null}
+                      </div>
+                      <div className="mt-3 flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                        <div className="flex items-center gap-2">
+                          {item.type === "folder" ? (
+                            <span>{item.children.length} внутри</span>
+                          ) : item.type === "file" ? (
+                            <span>{formatFileSize(item.size_bytes)}</span>
+                          ) : (
+                            <span />
+                          )}
+                          {item.type === "link" && getItemLink(item) && (
+                            <button
+                              type="button"
+                              className="rounded-full border px-3 py-1 text-[11px] font-medium hover:bg-muted"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                window.open(getItemLink(item), "_blank", "noreferrer")
+                              }}
+                            >
+                              Перейти
+                            </button>
+                          )}
+                        </div>
+                        <span>{formatDate(item.updated_at)}</span>
+                      </div>
+                    </>
+                  )}
                 </button>
               )
             })}

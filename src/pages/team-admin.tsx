@@ -10,6 +10,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Skeleton } from "@/components/ui/skeleton"
 import { useTeamAdmin, type AdminMember, type StorageS3Key } from "@/hooks/use-team-admin"
 import { useTeams } from "@/hooks/use-teams"
 import { useUser } from "@/hooks/use-user"
@@ -51,6 +52,7 @@ export function TeamAdminPage() {
   const [confirmMember, setConfirmMember] = useState<AdminMember | null>(null)
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState("")
+  const [imageLoaded, setImageLoaded] = useState(false)
   const imageInputRef = useRef<HTMLInputElement | null>(null)
 
   useEffect(() => {
@@ -58,6 +60,7 @@ export function TeamAdminPage() {
       setName(data.team.name)
       setDescription(data.team.description || "")
       setImage(data.team.img_url || "")
+      setImageLoaded(false)
       setStorageLimit(String(data.team.storage_limit_gb ?? 1))
       setStorageKeyId(data.team.storage_s3_key_id || "")
     }
@@ -88,6 +91,7 @@ export function TeamAdminPage() {
       if (teamLogin) await fetchStorageUsage(teamLogin)
       if (teamLogin) await checkTeamMembership(teamLogin)
       setImage(nextImage)
+      setImageLoaded(false)
     }, "Фото команды сброшено")
   }
 
@@ -98,6 +102,7 @@ export function TeamAdminPage() {
       const result = await uploadImage(file)
       if (typeof result === "string" && result) {
         setImage(result)
+        setImageLoaded(false)
       }
       await refreshTeams()
       if (teamLogin) await fetchStorageUsage(teamLogin)
@@ -170,7 +175,17 @@ export function TeamAdminPage() {
         </CardHeader>
         <CardContent className="space-y-5">
           <div className="flex items-center gap-4">
-              <Avatar className="size-20"><AvatarImage src={image} /><AvatarFallback>{name.slice(0, 2).toUpperCase()}</AvatarFallback></Avatar>
+              <div className="relative size-20 overflow-hidden rounded-full border bg-muted">
+                {!imageLoaded && image && <Skeleton className="absolute inset-0 rounded-full" />}
+                <Avatar className="size-20">
+                  <AvatarImage
+                    src={image}
+                    onLoad={() => setImageLoaded(true)}
+                    onError={() => setImageLoaded(false)}
+                  />
+                  <AvatarFallback>{name.slice(0, 2).toUpperCase()}</AvatarFallback>
+                </Avatar>
+              </div>
               <div className="space-y-3">
                 <div className="flex flex-wrap gap-2">
                   <input ref={imageInputRef} className="hidden" type="file" accept="image/*" onChange={(e) => handleImage(e.target.files?.[0])} />

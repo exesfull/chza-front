@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react"
 import { useNavigate, useParams } from "react-router-dom"
-import { Copy, Database, Link2, MoreVertical, Plus, Save, Shield, Trash2, Users } from "lucide-react"
+import { CheckSquare, Copy, Database, FolderKanban, Link2, ListTodo, MoreVertical, Plus, RotateCcw, Save, Shield, SquareStack, Trash2, Users } from "lucide-react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -15,6 +15,12 @@ import { useUser } from "@/hooks/use-user"
 import { cn } from "@/lib/utils"
 
 type Section = "general" | "members" | "usage"
+
+function buildTeamAvatarUrl(teamName: string) {
+  const cleanName = teamName.trim().replace(/\s+/g, " ") || "team"
+  const length = Math.min(4, Math.max(1, Array.from(cleanName).length))
+  return `https://ui-avatars.com/api/?name=${encodeURIComponent(cleanName)}&background=random&length=${length}&size=256&font-size=0.33`
+}
 
 export function TeamAdminPage() {
   const { teamLogin } = useParams()
@@ -85,18 +91,27 @@ export function TeamAdminPage() {
       </div>
       {message && <div className="rounded-lg border bg-muted/40 px-4 py-3 text-sm">{message}</div>}
 
-      {section === "general" && <Card>
+      {section === "general" && <><Card>
         <CardHeader><CardTitle>Информация о команде</CardTitle><CardDescription>Эти данные видят все участники команды.</CardDescription></CardHeader>
         <CardContent className="space-y-5">
           <div className="flex items-center gap-4">
             <Avatar className="size-20"><AvatarImage src={image} /><AvatarFallback>{name.slice(0, 2).toUpperCase()}</AvatarFallback></Avatar>
-            <div><label className="inline-flex cursor-pointer items-center rounded-md border px-3 py-2 text-sm font-medium hover:bg-muted">Выбрать изображение<input className="hidden" type="file" accept="image/*" onChange={(e) => handleImage(e.target.files?.[0])} /></label><p className="mt-1 text-xs text-muted-foreground">PNG, JPG, SVG, до 1 МБ</p></div>
+            <div><div className="flex flex-wrap gap-2"><label className="inline-flex cursor-pointer items-center rounded-md border px-3 py-2 text-sm font-medium hover:bg-muted">Выбрать изображение<input className="hidden" type="file" accept="image/*" onChange={(e) => handleImage(e.target.files?.[0])} /></label><Button type="button" variant="outline" onClick={() => setImage(buildTeamAvatarUrl(name))}><RotateCcw className="mr-2 size-4" />Сбросить</Button></div><p className="mt-1 text-xs text-muted-foreground">PNG, JPG, SVG, до 1 МБ</p></div>
           </div>
-          <div className="space-y-2"><label className="text-sm font-medium">Название</label><Input value={name} onChange={(e) => setName(e.target.value)} maxLength={120} /></div>
-          <div className="space-y-2"><label className="text-sm font-medium">Описание</label><Textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={5} /></div>
+          <div className="max-w-xl space-y-2"><label className="text-sm font-medium">Название</label><Input value={name} onChange={(e) => setName(e.target.value)} maxLength={120} /></div>
+          <div className="max-w-2xl space-y-2"><label className="text-sm font-medium">Описание</label><Textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={5} /></div>
           <Button onClick={saveTeam} disabled={busy || !name.trim()}><Save className="mr-2 size-4" />Сохранить</Button>
         </CardContent>
-      </Card>}
+      </Card>
+      <Card><CardHeader><CardTitle>Статистика команды</CardTitle><CardDescription>Количество активных объектов во всех разделах команды.</CardDescription></CardHeader><CardContent><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        {[
+          { label: "Проекты", value: data.stats.projects, icon: FolderKanban },
+          { label: "Ссылки", value: data.stats.links, icon: Link2 },
+          { label: "Списки задач", value: data.stats.task_lists, icon: ListTodo },
+          { label: "Задачи", value: data.stats.tasks, icon: CheckSquare },
+          { label: "Доски", value: data.stats.boards, icon: SquareStack },
+        ].map((item) => <div key={item.label} className="rounded-xl border bg-muted/20 p-4"><div className="flex items-center gap-2 text-sm text-muted-foreground"><item.icon className="size-4" />{item.label}</div><p className="mt-3 text-3xl font-semibold tabular-nums">{item.value}</p></div>)}
+      </div></CardContent></Card></>}
 
       {section === "members" && <>
         <Card><CardHeader className="flex-row items-center justify-between"><div><CardTitle>Ссылки приглашения</CardTitle><CardDescription>Создавайте отдельные ссылки и задавайте лимит вступлений.</CardDescription></div><Button onClick={() => setInviteOpen(true)}><Plus className="mr-2 size-4" />Создать ссылку</Button></CardHeader>
@@ -125,7 +140,7 @@ export function TeamAdminPage() {
 
       {section === "usage" && <div className="grid gap-4 md:grid-cols-2"><Card><CardHeader><CardTitle>Токены AI</CardTitle><CardDescription>Расходы команды на запросы агента</CardDescription></CardHeader><CardContent><p className="text-3xl font-semibold">—</p><p className="text-sm text-muted-foreground">Статистика появится позже</p></CardContent></Card><Card><CardHeader><CardTitle>Хранилище</CardTitle><CardDescription>Файлы и данные команды</CardDescription></CardHeader><CardContent><p className="text-3xl font-semibold">— ГБ</p><p className="text-sm text-muted-foreground">Статистика появится позже</p></CardContent></Card></div>}
 
-      <Dialog open={inviteOpen} onOpenChange={setInviteOpen}><DialogContent><DialogHeader><DialogTitle>Новая ссылка приглашения</DialogTitle><DialogDescription>Лимит учитывается только при добавлении нового участника.</DialogDescription></DialogHeader><div className="space-y-4"><div className="space-y-2"><label className="text-sm font-medium">Название ссылки</label><Input value={inviteName} onChange={(e) => setInviteName(e.target.value)} placeholder="Например, отдел разработки" /></div><div className="space-y-2"><label className="text-sm font-medium">Лимит вступлений</label><Input type="number" min="1" value={inviteLimit} onChange={(e) => setInviteLimit(e.target.value)} placeholder="Без ограничений" /></div></div><DialogFooter><Button variant="outline" onClick={() => setInviteOpen(false)}>Отмена</Button><Button disabled={!inviteName.trim() || busy} onClick={() => run(async () => { await createInvite({ name: inviteName, max_uses: inviteLimit ? Number(inviteLimit) : undefined }); setInviteOpen(false); setInviteName(""); setInviteLimit("") }, "Ссылка создана")}>Создать</Button></DialogFooter></DialogContent></Dialog>
+      <Dialog open={inviteOpen} onOpenChange={setInviteOpen}><DialogContent><DialogHeader><DialogTitle>Новая ссылка приглашения</DialogTitle><DialogDescription>Лимит учитывается только при добавлении нового участника.</DialogDescription></DialogHeader><div className="space-y-4"><div className="max-w-md space-y-2"><label className="text-sm font-medium">Название ссылки</label><Input value={inviteName} onChange={(e) => setInviteName(e.target.value)} placeholder="Например, отдел разработки" /></div><div className="max-w-48 space-y-2"><label className="text-sm font-medium">Лимит вступлений</label><Input type="number" min="1" value={inviteLimit} onChange={(e) => setInviteLimit(e.target.value)} placeholder="Без ограничений" /></div></div><DialogFooter><Button variant="outline" onClick={() => setInviteOpen(false)}>Отмена</Button><Button disabled={!inviteName.trim() || busy} onClick={() => run(async () => { await createInvite({ name: inviteName, max_uses: inviteLimit ? Number(inviteLimit) : undefined }); setInviteOpen(false); setInviteName(""); setInviteLimit("") }, "Ссылка создана")}>Создать</Button></DialogFooter></DialogContent></Dialog>
       <Dialog open={Boolean(confirmMember)} onOpenChange={(open) => !open && setConfirmMember(null)}><DialogContent><DialogHeader><DialogTitle>Исключить участника?</DialogTitle><DialogDescription>Пользователь потеряет доступ к команде и ее проектам.</DialogDescription></DialogHeader><DialogFooter><Button variant="outline" onClick={() => setConfirmMember(null)}>Отмена</Button><Button variant="destructive" onClick={() => confirmMember && run(async () => { await removeMember(confirmMember.id); setConfirmMember(null) }, "Участник исключен")}>Исключить</Button></DialogFooter></DialogContent></Dialog>
     </div>
   )

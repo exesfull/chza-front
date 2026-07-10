@@ -36,6 +36,13 @@ interface AdminData {
   members: AdminMember[]
   invites: TeamInvite[]
   usage: { tokens: number | null; storage_gb: number | null }
+  stats: {
+    projects: number
+    links: number
+    task_lists: number
+    tasks: number
+    boards: number
+  }
 }
 
 export function useTeamAdmin(teamLogin?: string) {
@@ -61,12 +68,14 @@ export function useTeamAdmin(teamLogin?: string) {
 
   const post = useCallback(async (method: string, payload: Record<string, unknown>) => {
     if (!teamLogin) return false
-    const body = new FormData()
-    body.append("team_login", teamLogin)
+    const body = new URLSearchParams()
+    body.set("team_login", teamLogin)
     Object.entries(payload).forEach(([key, value]) => {
-      if (value !== undefined && value !== null) body.append(key, String(value))
+      if (value !== undefined && value !== null) body.set(key, String(value))
     })
-    await api.post(`/main/team/${method}/?team_login=${teamLogin}`, body)
+    await api.post(`/main/team/${method}/?team_login=${teamLogin}`, body, {
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    })
     await refresh()
     return true
   }, [refresh, teamLogin])

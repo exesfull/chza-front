@@ -28,8 +28,10 @@ export function TeamInvitePage() {
   const join = async () => {
     setJoining(true)
     try {
-      const body = new FormData(); body.append("token", token || "")
-      const { data } = await api.post("/main/team/joinByInvite/", body)
+      const body = new URLSearchParams(); body.set("token", token || "")
+      const { data } = await api.post("/main/team/joinByInvite/", body, {
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      })
       await refreshTeams()
       navigate(`/teams/${data.data.team.login}`, { replace: true })
     } catch { setError("Не удалось присоединиться к команде"); setJoining(false) }

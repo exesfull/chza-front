@@ -114,7 +114,7 @@ export function ProjectPage() {
   const [currentFolderId, setCurrentFolderId] = useState<string | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
   const [createStep, setCreateStep] = useState<"choose" | "form">("choose")
-  const [createType, setCreateType] = useState<ProjectCreateType>("folder")
+  const [createType, setCreateType] = useState<ProjectCreateType | null>(null)
   const [createName, setCreateName] = useState("")
   const [createDescription, setCreateDescription] = useState("")
   const [createParentId, setCreateParentId] = useState<string | null>(null)
@@ -262,7 +262,7 @@ export function ProjectPage() {
   const resetCreate = () => {
     setCreateOpen(false)
     setCreateStep("choose")
-    setCreateType("folder")
+    setCreateType(null)
     setCreateName("")
     setCreateDescription("")
     setCreateParentId(null)
@@ -275,7 +275,7 @@ export function ProjectPage() {
   const openCreate = (type?: ProjectCreateType, parentId?: string | null) => {
     setCreateOpen(true)
     setCreateStep(type ? "form" : "choose")
-    setCreateType(type || "folder")
+    setCreateType(type || null)
     setCreateParentId(parentId ?? null)
     setFormError("")
   }
@@ -702,13 +702,15 @@ export function ProjectPage() {
           <DialogHeader>
             <DialogTitle>Создать объект</DialogTitle>
             <DialogDescription>
-              {createType === "folder"
-                ? "Введите название папки."
-                : "Сначала выберите тип карточки, потом задайте название и параметры."}
+              {createStep === "choose"
+                ? "Сначала выберите, что вы хотите создать."
+                : createType === "folder"
+                  ? "Введите название папки."
+                  : "Задайте название и параметры объекта."}
             </DialogDescription>
           </DialogHeader>
 
-          {createStep === "choose" && createType !== "folder" ? (
+          {createStep === "choose" ? (
             <div className="grid gap-3 py-2 sm:grid-cols-2">
               {[
                 { type: "folder" as const, title: "Папка", icon: FolderPlus, description: "Группировка объектов" },
@@ -721,11 +723,10 @@ export function ProjectPage() {
                 return (
                   <button
                     key={item.type}
-                    type="button"
-                    className="flex items-start gap-3 rounded-2xl border p-4 text-left transition-colors hover:bg-muted/40"
+                  type="button"
+                    className={`flex items-start gap-3 rounded-2xl border p-4 text-left transition-colors hover:bg-muted/40 ${createType === item.type ? "border-primary bg-primary/5" : ""}`}
                     onClick={() => {
                       setCreateType(item.type)
-                      setCreateStep("form")
                       setFormError("")
                     }}
                   >
@@ -787,7 +788,11 @@ export function ProjectPage() {
             <Button variant="outline" onClick={() => (createStep === "choose" ? resetCreate() : setCreateStep("choose"))} disabled={submitting}>
               {createStep === "choose" ? "Отмена" : "Назад"}
             </Button>
-            {createStep === "form" && (
+            {createStep === "choose" ? (
+              <Button onClick={() => createType && setCreateStep("form")} disabled={!createType || submitting}>
+                Продолжить
+              </Button>
+            ) : (
               <Button onClick={handleCreate} disabled={submitting}>
                 {submitting ? "Создание..." : "Создать"}
               </Button>

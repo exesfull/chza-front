@@ -90,6 +90,9 @@ export function TeamsPage() {
   }, [activeTeam])
 
   const sortedTeams = sortTeams(teams, sortBy)
+  const usedGb = activeTeam?.storage_used_gb ?? 0
+  const limitGb = activeTeam?.storage_limit_gb ?? 1
+  const percent = activeTeam?.storage_percent ?? 0
 
   const handleSelectTeam = (teamLogin: string) => {
     navigate(`/teams/${teamLogin}`)
@@ -153,6 +156,21 @@ export function TeamsPage() {
       {/* Main */}
       <main className="flex flex-1 items-start justify-center p-4 sm:p-6">
         <div className="w-full max-w-2xl">
+          {activeTeam && (
+            <div className="mb-4 rounded-3xl bg-slate-950 p-4 text-white shadow-lg">
+              <div className="mb-2 flex items-center justify-between text-sm font-medium">
+                <span>{String(Number(usedGb.toFixed(2)))} ГБ</span>
+                <span>{String(Number(limitGb.toFixed(2)))} ГБ</span>
+              </div>
+              <div className="h-3 overflow-hidden rounded-full bg-white/15">
+                <div className="h-full rounded-full bg-white/70 transition-all" style={{ width: `${Math.min(100, percent)}%` }} />
+              </div>
+              <div className="mt-2 flex items-center justify-between text-xs text-white/80">
+                <span>Занято</span>
+                <span>Лимит</span>
+              </div>
+            </div>
+          )}
           <div className="mb-4 sm:mb-6 flex flex-col sm:flex-row items-start sm:items-end justify-between gap-3">
             <div>
               <h1 className="text-2xl sm:text-3xl font-bold">Мои команды</h1>

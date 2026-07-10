@@ -7,6 +7,11 @@ export interface TeamInfo {
   name: string
   img_url: string
   joined_at: string
+  storage_used_bytes?: number
+  storage_used_gb?: number
+  storage_limit_gb?: number
+  storage_limit_bytes?: number
+  storage_percent?: number
 }
 
 export interface TeamMembership {

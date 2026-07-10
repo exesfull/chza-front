@@ -8,6 +8,8 @@ export interface AdminTeam {
   description: string | null
   img_url: string
   created_by: string
+  storage_limit_gb: number
+  storage_s3_key_id: string | null
 }
 
 export interface AdminMember {
@@ -31,12 +33,37 @@ export interface TeamInvite {
   created_at: string
 }
 
+export interface StorageS3Key {
+  id: string
+  team_id: string | null
+  name: string
+  client_name: string
+  access_key: string
+  bucket_name: string
+  endpoint_url: string
+  public_url: string
+  is_global: boolean
+  is_active: boolean
+}
+
+export interface StorageOverview {
+  used_bytes: number
+  used_gb: number
+  limit_gb: number
+  limit_bytes: number
+  percent: number
+  files_count: number
+  s3_key: StorageS3Key | null
+}
+
 interface AdminData {
   team: AdminTeam
   members: AdminMember[]
   invites: TeamInvite[]
   used_invites: TeamInvite[]
   usage: { tokens: number | null; storage_gb: number | null }
+  storage: StorageOverview
+  storage_keys: StorageS3Key[]
   stats: {
     projects: number
     links: number
@@ -87,6 +114,9 @@ export function useTeamAdmin(teamLogin?: string) {
     createInvite: (payload: { name: string; max_uses?: number }) => post("createInvite", payload),
     disableInvite: (inviteId: string) => post("disableInvite", { invite_id: inviteId }),
     deleteInvite: (inviteId: string) => post("deleteInvite", { invite_id: inviteId }),
+    updateResources: (payload: { storage_limit_gb?: number; storage_s3_key_id?: string | null }) => post("updateResources", payload),
+    createStorageKey: (payload: { name: string; client_name: string; access_key: string; secret_key: string; bucket_name: string; endpoint_url: string; public_url: string }) => post("createStorageKey", payload),
+    deleteStorageKey: (keyId: string) => post("deleteStorageKey", { storage_s3_key_id: keyId }),
     setMemberAdmin: (userId: string, isAdmin: boolean) => post("setMemberAdmin", { user_id: userId, is_admin: isAdmin ? "1" : "0" }),
     removeMember: (userId: string) => post("removeMember", { user_id: userId }),
   }

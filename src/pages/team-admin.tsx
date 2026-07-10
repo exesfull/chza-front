@@ -9,7 +9,8 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
-import { useTeamAdmin, type AdminMember } from "@/hooks/use-team-admin"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { useTeamAdmin, type AdminMember, type StorageS3Key } from "@/hooks/use-team-admin"
 import { useTeams } from "@/hooks/use-teams"
 import { useUser } from "@/hooks/use-user"
 import { cn } from "@/lib/utils"
@@ -27,7 +28,7 @@ export function TeamAdminPage() {
   const navigate = useNavigate()
   const { isAdmin, refreshTeams, checkTeamMembership } = useTeams()
   const { user } = useUser()
-  const { data, loading, error, updateSettings, createInvite, disableInvite, deleteInvite, setMemberAdmin, removeMember } = useTeamAdmin(teamLogin)
+  const { data, loading, error, updateSettings, createInvite, disableInvite, deleteInvite, updateResources, createStorageKey: createStorageKeyRequest, deleteStorageKey, setMemberAdmin, removeMember } = useTeamAdmin(teamLogin)
   const [section, setSection] = useState<Section>("general")
   const [name, setName] = useState("")
   const [description, setDescription] = useState("")
@@ -37,6 +38,16 @@ export function TeamAdminPage() {
   const [qrInvite, setQrInvite] = useState<string | null>(null)
   const [inviteName, setInviteName] = useState("")
   const [inviteLimit, setInviteLimit] = useState("")
+  const [storageLimit, setStorageLimit] = useState("1")
+  const [storageKeyId, setStorageKeyId] = useState<string>("")
+  const [storageKeyOpen, setStorageKeyOpen] = useState(false)
+  const [storageKeyName, setStorageKeyName] = useState("")
+  const [storageKeyClientName, setStorageKeyClientName] = useState("")
+  const [storageKeyAccessKey, setStorageKeyAccessKey] = useState("")
+  const [storageKeySecretKey, setStorageKeySecretKey] = useState("")
+  const [storageKeyBucket, setStorageKeyBucket] = useState("")
+  const [storageKeyEndpoint, setStorageKeyEndpoint] = useState("https://s3.regru.cloud")
+  const [storageKeyPublicUrl, setStorageKeyPublicUrl] = useState("https://chza.s3.regru.cloud/")
   const [confirmMember, setConfirmMember] = useState<AdminMember | null>(null)
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState("")
@@ -46,6 +57,8 @@ export function TeamAdminPage() {
       setName(data.team.name)
       setDescription(data.team.description || "")
       setImage(data.team.img_url || "")
+      setStorageLimit(String(data.team.storage_limit_gb ?? 1))
+      setStorageKeyId(data.team.storage_s3_key_id || "")
     }
   }, [data?.team])
 
@@ -89,8 +102,44 @@ export function TeamAdminPage() {
   const tabs = [
     { id: "general" as const, label: "Команда", icon: Shield },
     { id: "members" as const, label: "Участники и приглашения", icon: Users },
-    { id: "usage" as const, label: "Расходы", icon: Database },
+    { id: "usage" as const, label: "Ресурсы", icon: Database },
   ]
+
+  const formatGb = (value: number) => {
+    const next = Number.isFinite(value) ? value : 0
+    return String(Number(next.toFixed(2)))
+  }
+
+  const saveResources = () => run(async () => {
+    await updateResources({
+      storage_limit_gb: Number(storageLimit),
+      storage_s3_key_id: storageKeyId || "__global__",
+    })
+    await refreshTeams()
+    if (teamLogin) await checkTeamMembership(teamLogin)
+  }, "Ресурсы обновлены")
+
+  const createStorageKey = async () => {
+    await run(async () => {
+      await createStorageKeyRequest({
+        name: storageKeyName,
+        client_name: storageKeyClientName,
+        access_key: storageKeyAccessKey,
+        secret_key: storageKeySecretKey,
+        bucket_name: storageKeyBucket,
+        endpoint_url: storageKeyEndpoint,
+        public_url: storageKeyPublicUrl,
+      })
+      setStorageKeyOpen(false)
+      setStorageKeyName("")
+      setStorageKeyClientName("")
+      setStorageKeyAccessKey("")
+      setStorageKeySecretKey("")
+      setStorageKeyBucket("")
+      setStorageKeyEndpoint("https://s3.regru.cloud")
+      setStorageKeyPublicUrl("https://chza.s3.regru.cloud/")
+    }, "Ключ S3 создан")
+  }
 
   return (
     <div className="flex flex-col gap-6 p-4 lg:p-6">
@@ -231,7 +280,176 @@ export function TeamAdminPage() {
         })}</CardContent></Card>
       </>}
 
-      {section === "usage" && <div className="grid gap-4 md:grid-cols-2"><Card><CardHeader><CardTitle>Токены AI</CardTitle><CardDescription>Расходы команды на запросы агента</CardDescription></CardHeader><CardContent><p className="text-3xl font-semibold">—</p><p className="text-sm text-muted-foreground">Статистика появится позже</p></CardContent></Card><Card><CardHeader><CardTitle>Хранилище</CardTitle><CardDescription>Файлы и данные команды</CardDescription></CardHeader><CardContent><p className="text-3xl font-semibold">— ГБ</p><p className="text-sm text-muted-foreground">Статистика появится позже</p></CardContent></Card></div>}
+      {section === "usage" && (
+        <div className="grid gap-4 xl:grid-cols-2">
+          <Card className="overflow-hidden">
+            <CardHeader className="space-y-1">
+              <CardTitle>Хранилище команды</CardTitle>
+              <CardDescription>Глобальный лимит по умолчанию 1 ГБ на команду. Здесь можно поднять лимит и подключить свой S3.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              <div className="rounded-2xl bg-slate-950 p-4 text-white">
+                <div className="mb-2 flex items-center justify-between text-sm">
+                  <span>{formatGb(data.storage?.used_gb || 0)} ГБ</span>
+                  <span>{formatGb(data.storage?.limit_gb || 1)} ГБ</span>
+                </div>
+                <div className="h-3 overflow-hidden rounded-full bg-white/15">
+                  <div
+                    className="h-full rounded-full bg-white/60 transition-all"
+                    style={{ width: `${Math.min(100, data.storage?.percent || 0)}%` }}
+                  />
+                </div>
+                <div className="mt-3 flex items-center justify-between text-xs text-white/80">
+                  <span>Использовано: {formatGb(data.storage?.used_gb || 0)} ГБ</span>
+                  <span>Лимит: {formatGb(data.storage?.limit_gb || 1)} ГБ</span>
+                </div>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Лимит команды, ГБ</label>
+                  <Input type="number" min="1" step="0.1" value={storageLimit} onChange={(e) => setStorageLimit(e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">S3 ключ</label>
+                  <Select value={storageKeyId || "__global__"} onValueChange={(value) => setStorageKeyId(value === "__global__" ? "" : value)}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Глобальный S3" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__global__">Глобальный S3</SelectItem>
+                      {(data.storage_keys || []).map((key: StorageS3Key) => (
+                        <SelectItem key={key.id} value={key.id}>
+                          {key.name}{key.is_global ? " (global)" : ""}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <Button onClick={saveResources} disabled={busy}>
+                  <Save className="mr-2 size-4" />
+                  Сохранить ресурсы
+                </Button>
+                <Button variant="outline" onClick={() => setStorageKeyOpen(true)}>
+                  <Plus className="mr-2 size-4" />
+                  Добавить S3 ключ
+                </Button>
+              </div>
+
+              <div className="rounded-2xl border bg-muted/20 p-4 text-sm">
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <p className="font-medium">Активный S3</p>
+                    <p className="text-muted-foreground">
+                      {data.storage?.s3_key ? data.storage.s3_key.name : "Глобальный S3"}
+                    </p>
+                  </div>
+                  <Badge variant="outline">{data.storage?.files_count || 0} файлов</Badge>
+                </div>
+                <div className="mt-3 grid gap-2 text-xs text-muted-foreground">
+                  <div>Использовано: {formatGb(data.storage?.used_gb || 0)} ГБ</div>
+                  <div>Доступно: {formatGb(Math.max((data.storage?.limit_gb || 1) - (data.storage?.used_gb || 0), 0))} ГБ</div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex-row items-start justify-between gap-4">
+              <div className="space-y-1">
+                <CardTitle>Ключи S3</CardTitle>
+                <CardDescription>Глобальный ключ виден для всех команд, а свои ключи можно добавить отдельно для этой команды.</CardDescription>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {(data.storage_keys || []).length === 0 ? (
+                <div className="rounded-2xl border border-dashed p-6 text-sm text-muted-foreground">Ключи S3 пока не добавлены.</div>
+              ) : (
+                data.storage_keys.map((key: StorageS3Key) => (
+                  <div key={key.id} className="rounded-2xl border p-4">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-medium">{key.name}</span>
+                          {key.is_global ? <Badge>Global</Badge> : <Badge variant="secondary">Team</Badge>}
+                        </div>
+                        <div className="mt-2 grid gap-1 text-xs text-muted-foreground">
+                          <div>Клиент: {key.client_name}</div>
+                          <div>Bucket: {key.bucket_name}</div>
+                          <div className="truncate">Endpoint: {key.endpoint_url}</div>
+                          <div className="truncate">Public: {key.public_url}</div>
+                        </div>
+                      </div>
+                      {!key.is_global && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => run(() => deleteStorageKey(key.id), "Ключ удалён")}
+                        >
+                          <Trash2 className="mr-2 size-4" />
+                          Удалить
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                ))
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      <Dialog open={storageKeyOpen} onOpenChange={setStorageKeyOpen}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Новый S3 ключ</DialogTitle>
+            <DialogDescription>Добавьте отдельный ключ для этой команды или подключите другой S3 бакет.</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Название</label>
+              <Input value={storageKeyName} onChange={(e) => setStorageKeyName(e.target.value)} placeholder="Например, Командный S3" />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Имя клиента</label>
+              <Input value={storageKeyClientName} onChange={(e) => setStorageKeyClientName(e.target.value)} placeholder="chza-api" />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Access key</label>
+              <Input value={storageKeyAccessKey} onChange={(e) => setStorageKeyAccessKey(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Secret key</label>
+              <Input value={storageKeySecretKey} onChange={(e) => setStorageKeySecretKey(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Bucket</label>
+              <Input value={storageKeyBucket} onChange={(e) => setStorageKeyBucket(e.target.value)} placeholder="bucket-name" />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Endpoint</label>
+              <Input value={storageKeyEndpoint} onChange={(e) => setStorageKeyEndpoint(e.target.value)} placeholder="https://s3.example.com" />
+            </div>
+            <div className="space-y-2 md:col-span-2">
+              <label className="text-sm font-medium">Public URL</label>
+              <Input value={storageKeyPublicUrl} onChange={(e) => setStorageKeyPublicUrl(e.target.value)} placeholder="https://files.example.com/" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setStorageKeyOpen(false)}>Отмена</Button>
+            <Button
+              disabled={!storageKeyName.trim() || !storageKeyClientName.trim() || !storageKeyAccessKey.trim() || !storageKeySecretKey.trim() || !storageKeyBucket.trim() || !storageKeyEndpoint.trim() || !storageKeyPublicUrl.trim() || busy}
+              onClick={createStorageKey}
+            >
+              <Plus className="mr-2 size-4" />
+              Создать ключ
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
         <DialogContent>

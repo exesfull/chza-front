@@ -6,6 +6,7 @@ const projectInFlight = new Map<string, Promise<ProjectDetail | null>>()
 
 export interface ProjectInfo {
   id: string
+  created_by?: string
   name: string
   description: string | null
   img_url: string | null
@@ -50,6 +51,14 @@ export interface ProjectDetail extends ProjectInfo {
   task_lists: ProjectTaskList[]
   links: ProjectLink[]
   boards: ProjectBoard[]
+  members?: Array<{
+    id: string
+    first_name: string
+    last_name: string
+    email: string
+    img_url: string | null
+    is_admin: boolean
+  }>
 }
 
 export interface ProjectItem {
@@ -265,6 +274,27 @@ export function useProjects(teamLogin?: string, options?: { autoLoad?: boolean }
     return null
   }, [teamLogin])
 
+  const updateProjectMembers = useCallback(async (projectId: string, memberIds: string[]) => {
+    if (!teamLogin) {
+      return null
+    }
+
+    const form = new URLSearchParams()
+    form.append("project_id", projectId)
+    form.append("member_ids", JSON.stringify(memberIds))
+
+    const { data } = await api.post(`/main/project/updateMembers/?team_login=${teamLogin}`, form, {
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    })
+
+    if (data.status && data.data) {
+      projectCache.delete(`${teamLogin}:${projectId}`)
+      return data.data as ProjectDetail
+    }
+
+    return null
+  }, [teamLogin])
+
   const uploadProjectImage = useCallback(async (projectId: string, image: File) => {
     if (!teamLogin) {
       return null
@@ -343,6 +373,7 @@ export function useProjects(teamLogin?: string, options?: { autoLoad?: boolean }
       getProject,
       createProject,
       updateProject,
+      updateProjectMembers,
       uploadProjectImage,
       resetProjectImage,
       deleteProject,
@@ -351,6 +382,6 @@ export function useProjects(teamLogin?: string, options?: { autoLoad?: boolean }
       moveItem,
       deleteItem,
     }),
-    [projects, loading, refreshProjects, getProject, createProject, updateProject, uploadProjectImage, resetProjectImage, deleteProject, createFolder, renameItem, moveItem, deleteItem]
+    [projects, loading, refreshProjects, getProject, createProject, updateProject, updateProjectMembers, uploadProjectImage, resetProjectImage, deleteProject, createFolder, renameItem, moveItem, deleteItem]
   )
 }

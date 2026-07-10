@@ -54,6 +54,7 @@ interface KanbanCardProps {
   onUpdatePriority: (id: string, priority: string) => void
   onDragStart: (taskId: string) => void
   onDragEnd: () => void
+  onOpenTask: (id: string) => void
 }
 
 export function KanbanCard({
@@ -74,6 +75,7 @@ export function KanbanCard({
   onUpdatePriority,
   onDragStart,
   onDragEnd,
+  onOpenTask,
 }: KanbanCardProps) {
   const [editing, setEditing] = useState(false)
   const [editText, setEditText] = useState(title)
@@ -136,6 +138,7 @@ export function KanbanCard({
           e.stopPropagation()
           if (!editing && !editingDesc) {
             onSelect(id)
+            onOpenTask(id)
           }
         }}
         className={cn(

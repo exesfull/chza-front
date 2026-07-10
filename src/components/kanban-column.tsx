@@ -51,6 +51,7 @@ interface KanbanColumnProps {
   isTaskDragOver?: boolean
   selectedTaskId: string | null
   onSelectTask: (id: string | null) => void
+  onOpenTask: (id: string) => void
   onConfirmTaskAction: (id: string) => void
   editListCol?: (listId: string, colId: string, updates: { name?: string; description?: string; color_hex?: string; is_deleted?: boolean }) => Promise<boolean>
   onColumnUpdated?: () => void
@@ -84,6 +85,7 @@ export function KanbanColumn({
   isTaskDragOver,
   selectedTaskId,
   onSelectTask,
+  onOpenTask,
   onConfirmTaskAction,
   editListCol,
   onColumnUpdated,
@@ -347,6 +349,7 @@ export function KanbanColumn({
             onUpdatePriority={onUpdateTaskPriority}
             onDragStart={onDragStartTask}
             onDragEnd={onDragEndTask}
+            onOpenTask={onOpenTask}
           />
         ))}
       </div>

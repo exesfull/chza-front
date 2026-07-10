@@ -112,6 +112,7 @@ interface TableViewProps {
   onUpdateTaskText: (id: string, text: string) => void
   onUpdateTaskDescription: (id: string, desc: string) => void
   onCreateTask: (columnId: string, title: string) => void
+  onOpenTask: (id: string) => void
   // Stage management
   stagesOpen: boolean
   onStagesOpenChange: (open: boolean) => void
@@ -135,6 +136,7 @@ export function TableView({
   onUpdateTaskText,
   onUpdateTaskDescription,
   onCreateTask,
+  onOpenTask,
   stagesOpen,
   onStagesOpenChange,
   onAddColumn,
@@ -385,7 +387,10 @@ export function TableView({
                   "border-t transition-colors cursor-pointer",
                   selectedTaskId === task.id ? "bg-primary/5" : "hover:bg-muted/30"
                 )}
-                onClick={() => setSelectedTaskId(selectedTaskId === task.id ? null : task.id)}
+                onClick={() => {
+                  setSelectedTaskId(selectedTaskId === task.id ? null : task.id)
+                  onOpenTask(task.id)
+                }}
               >
                 {/* Completion */}
                 {visibleCols.completion && (

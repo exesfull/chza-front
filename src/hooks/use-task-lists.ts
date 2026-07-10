@@ -33,6 +33,40 @@ export interface ListInfo {
   cols: TaskColumn[]
 }
 
+export interface TaskChatMessage {
+  id: string
+  chat_id: string
+  user_id: string | null
+  role: string
+  content: string
+  meta: Record<string, unknown> | null
+  created_at: string | null
+  updated_at: string | null
+}
+
+export interface TaskActivityLog {
+  id: string
+  action: string
+  message: string
+  meta: Record<string, unknown> | null
+  created_at: string | null
+}
+
+export interface TaskCardData {
+  task: Task
+  chat: {
+    id: string
+    task_id: string
+    list_id: string
+    team_id: string
+    created_by: string | null
+    created_at: string | null
+    updated_at: string | null
+  } | null
+  messages: TaskChatMessage[]
+  history: TaskActivityLog[]
+}
+
 function buildProjectQuery(projectId?: string | null): string {
   return projectId ? `&project_id=${encodeURIComponent(projectId)}` : ""
 }
@@ -384,6 +418,47 @@ export function useTaskLists(teamLogin: string | undefined, projectId?: string |
     return null
   }, [teamLogin, projectId])
 
+  const getTaskCard = useCallback(async (listId: string, taskId: string): Promise<TaskCardData | null> => {
+    if (!teamLogin) return null
+    try {
+      const { data } = await api.get(`/main/task/getTaskCard/?team_login=${teamLogin}&list_id=${listId}&task_id=${taskId}${buildProjectQuery(projectId)}`)
+      if (data.status && data.data) {
+        return {
+          task: data.data.task as Task,
+          chat: data.data.chat || null,
+          messages: Array.isArray(data.data.messages) ? (data.data.messages as TaskChatMessage[]) : [],
+          history: Array.isArray(data.data.history) ? (data.data.history as TaskActivityLog[]) : [],
+        }
+      }
+    } catch (error) {
+      console.error("Failed to fetch task card:", error)
+    }
+    return null
+  }, [teamLogin, projectId])
+
+  const sendTaskMessage = useCallback(async (listId: string, taskId: string, content: string): Promise<TaskChatMessage | null> => {
+    if (!teamLogin) return null
+    try {
+      const formData = new FormData()
+      formData.append("team_login", teamLogin)
+      formData.append("list_id", listId)
+      formData.append("task_id", taskId)
+      formData.append("content", content)
+      if (projectId) {
+        formData.append("project_id", projectId)
+      }
+      const { data } = await api.post("/main/task/sendTaskMessage/", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      })
+      if (data.status && data.data) {
+        return data.data as TaskChatMessage
+      }
+    } catch (error) {
+      console.error("Failed to send task message:", error)
+    }
+    return null
+  }, [teamLogin, projectId])
+
   // Toggle task completion (set closed_at or null)
   const toggleTask = useCallback(async (listId: string, taskId: string, currentlyCompleted: boolean): Promise<boolean> => {
     if (!teamLogin) return false
@@ -728,6 +803,8 @@ export function useTaskLists(teamLogin: string | undefined, projectId?: string |
     updateColTasksSort,
     deleteAllTasksInColumn,
     archiveAllTasksInColumn,
+    getTaskCard,
+    sendTaskMessage,
     getColumnsForList,
     getTasksForColumn,
   }

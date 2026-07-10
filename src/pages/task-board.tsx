@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input"
 import { Progress } from "@/components/ui/progress"
 import { KanbanColumn } from "@/components/kanban-column"
 import { TableView } from "@/components/table-view"
+import { TaskDetailSheet } from "@/components/task-detail-sheet"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   Dialog,
@@ -28,6 +29,7 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu"
 import { cn } from "@/lib/utils"
+import type { TaskCardData } from "@/hooks/use-task-lists"
 
 const TEMPLATE_COLS = [
   { name: "Обсуждение", color: COLUMN_COLORS[5].value },
@@ -62,6 +64,8 @@ export function TaskBoardPage() {
     moveTask,
     deleteAllTasksInColumn,
     archiveAllTasksInColumn,
+    getTaskCard,
+    sendTaskMessage,
   } = useTaskLists(teamLogin, projectId)
 
   const [listInfo, setListInfo] = useState<{ id: string; name: string; description: string; view_type: string } | null>(null)
@@ -76,6 +80,10 @@ export function TaskBoardPage() {
   const [taskDragOverColId, setTaskDragOverColId] = useState<string | null>(null)
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
   const [confirmTaskId, setConfirmTaskId] = useState<string | null>(null)
+  const [taskSheetOpen, setTaskSheetOpen] = useState(false)
+  const [taskSheetLoading, setTaskSheetLoading] = useState(false)
+  const [activeTaskId, setActiveTaskId] = useState<string | null>(null)
+  const [activeTaskData, setActiveTaskData] = useState<TaskCardData | null>(null)
   const [listUpdatedAt, setListUpdatedAt] = useState<string | null>(null)
   const [isUpdating, setIsUpdating] = useState(false)
   const [pollInterval, setPollInterval] = useState(3000)
@@ -305,6 +313,58 @@ export function TaskBoardPage() {
     setConfirmTaskId(taskId)
     setSelectedTaskId(null)
   }, [])
+
+  const handleOpenTask = useCallback((taskId: string) => {
+    setSelectedTaskId(taskId)
+    setActiveTaskId(taskId)
+    setTaskSheetOpen(true)
+  }, [])
+
+  useEffect(() => {
+    if (!taskSheetOpen || !listId || !activeTaskId) {
+      if (!taskSheetOpen) {
+        setActiveTaskId(null)
+        setActiveTaskData(null)
+      }
+      return
+    }
+
+    let cancelled = false
+    setTaskSheetLoading(true)
+    getTaskCard(listId, activeTaskId).then((data) => {
+      if (!cancelled) {
+        setActiveTaskData(data)
+      }
+    }).finally(() => {
+      if (!cancelled) {
+        setTaskSheetLoading(false)
+      }
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [taskSheetOpen, listId, activeTaskId, getTaskCard])
+
+  const handleSendTaskMessage = useCallback(async (taskId: string, content: string) => {
+    if (!listId) return null
+    const sent = await sendTaskMessage(listId, taskId, content)
+    if (sent && activeTaskId === taskId) {
+      const refreshed = await getTaskCard(listId, taskId)
+      if (refreshed) {
+        setActiveTaskData(refreshed)
+      }
+    }
+    return sent
+  }, [listId, sendTaskMessage, getTaskCard, activeTaskId])
+
+  const refreshActiveTask = useCallback(async (taskId: string) => {
+    if (!listId || activeTaskId !== taskId) return
+    const refreshed = await getTaskCard(listId, taskId)
+    if (refreshed) {
+      setActiveTaskData(refreshed)
+    }
+  }, [listId, activeTaskId, getTaskCard])
 
   // Global keyboard handler for selected tasks
   useEffect(() => {
@@ -585,6 +645,7 @@ export function TaskBoardPage() {
         <TableView
           columns={columns}
           tasks={tasks}
+          onOpenTask={handleOpenTask}
           onToggleTask={(taskId) => {
             const task = tasks.find((t) => t.id === taskId)
             if (task && listId) toggleTask(listId, taskId, !!task.closed_at)
@@ -753,6 +814,7 @@ export function TaskBoardPage() {
                     }}
                     selectedTaskId={selectedTaskId}
                     onSelectTask={setSelectedTaskId}
+                    onOpenTask={handleOpenTask}
                     onConfirmTaskAction={handleConfirmTaskAction}
                   />
                 </div>
@@ -855,6 +917,68 @@ export function TaskBoardPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <TaskDetailSheet
+        open={taskSheetOpen}
+        onOpenChange={setTaskSheetOpen}
+        taskData={taskSheetLoading ? null : activeTaskData}
+        columns={columns}
+        onUpdateText={(taskId, text) => {
+          if (!listId) return false
+          return updateTaskText(listId, taskId, text).then((ok) => {
+            void refreshActiveTask(taskId)
+            return ok
+          })
+        }}
+        onUpdateDescription={(taskId, desc) => {
+          if (!listId) return false
+          return updateTaskDescription(listId, taskId, desc).then((ok) => {
+            void refreshActiveTask(taskId)
+            return ok
+          })
+        }}
+        onUpdateDeadline={(taskId, deadline) => {
+          if (!listId) return false
+          return updateTaskDeadline(listId, taskId, deadline).then((ok) => {
+            void refreshActiveTask(taskId)
+            return ok
+          })
+        }}
+        onUpdatePriority={(taskId, priority) => {
+          if (!listId) return false
+          return updateTaskPriority(listId, taskId, priority).then((ok) => {
+            void refreshActiveTask(taskId)
+            return ok
+          })
+        }}
+        onUpdateColumn={(taskId, columnId) => {
+          if (!listId) return false
+          return moveTask(listId, taskId, columnId).then((ok) => {
+            void refreshActiveTask(taskId)
+            return ok
+          })
+        }}
+        onToggleTask={(taskId) => {
+          const task = tasks.find((t) => t.id === taskId)
+          if (task && listId) {
+            toggleTask(listId, taskId, !!task.closed_at)
+            void getTaskCard(listId, taskId).then((data) => { if (data) setActiveTaskData(data) })
+          }
+        }}
+        onArchiveTask={(taskId) => {
+          if (listId) {
+            archiveTask(listId, taskId)
+            setTaskSheetOpen(false)
+          }
+        }}
+        onDeleteTask={(taskId) => {
+          if (listId) {
+            deleteTask(listId, taskId)
+            setTaskSheetOpen(false)
+          }
+        }}
+        onSendMessage={handleSendTaskMessage}
+      />
     </div>
   )
 }

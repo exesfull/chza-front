@@ -5,6 +5,7 @@ import {
   CalendarPlus,
   ChevronLeft,
   ChevronRight,
+  CalendarRange,
   Pencil,
   Trash2,
 } from "lucide-react"
@@ -57,6 +58,27 @@ function getFirstDayOfMonth(year: number, month: number) {
   return new Date(year, month, 1).getDay()
 }
 
+function startOfWeek(date: Date) {
+  const result = new Date(date)
+  const day = result.getDay() || 7
+  result.setHours(0, 0, 0, 0)
+  result.setDate(result.getDate() - (day - 1))
+  return result
+}
+
+function addDays(date: Date, days: number) {
+  const result = new Date(date)
+  result.setDate(result.getDate() + days)
+  return result
+}
+
+function toDateKey(date: Date) {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, "0")
+  const day = String(date.getDate()).padStart(2, "0")
+  return `${year}-${month}-${day}`
+}
+
 function isValidDate(value: string) {
   return /^\d{4}-\d{2}-\d{2}$/.test(value)
 }
@@ -76,8 +98,8 @@ function sortEvents(events: CalendarEvent[]) {
 export function CalendarPage() {
   const { teamLogin } = useParams()
   const today = new Date()
-  const [currentMonth, setCurrentMonth] = useState(today.getMonth())
-  const [currentYear, setCurrentYear] = useState(today.getFullYear())
+  const [focusDate, setFocusDate] = useState(() => new Date())
+  const [viewMode, setViewMode] = useState<"month" | "week">("month")
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
   const [events, setEvents] = useState<CalendarEvent[]>([])
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -125,12 +147,13 @@ export function CalendarPage() {
     localStorage.setItem(storageKey, JSON.stringify(events))
   }, [events, storageKey])
 
+  const currentMonth = focusDate.getMonth()
+  const currentYear = focusDate.getFullYear()
   const daysInMonth = getDaysInMonth(currentYear, currentMonth)
   const firstDay = getFirstDayOfMonth(currentYear, currentMonth)
   const adjustedFirstDay = firstDay === 0 ? 6 : firstDay - 1
 
-  const todayStr = `${currentYear}-${String(currentMonth + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`
-
+  const todayStr = toDateKey(today)
   const calendarDays = []
   for (let i = 0; i < adjustedFirstDay; i++) {
     calendarDays.push(null)
@@ -140,6 +163,10 @@ export function CalendarPage() {
   }
 
   const getEventsForDate = (date: string) => sortEvents(events.filter((event) => event.date === date))
+
+  const weekStart = startOfWeek(focusDate)
+  const weekDays = Array.from({ length: 7 }, (_, index) => addDays(weekStart, index))
+  const weekLabel = `${weekStart.getDate()} ${monthNames[weekStart.getMonth()]} - ${addDays(weekStart, 6).getDate()} ${monthNames[addDays(weekStart, 6).getMonth()]}`
 
   const openCreate = (date: string) => {
     setEditingId(null)
@@ -190,21 +217,27 @@ export function CalendarPage() {
   }
 
   const prevMonth = () => {
-    if (currentMonth === 0) {
-      setCurrentMonth(11)
-      setCurrentYear((year) => year - 1)
-    } else {
-      setCurrentMonth((month) => month - 1)
-    }
+    setFocusDate((prev) => {
+      const next = new Date(prev)
+      if (viewMode === "week") {
+        next.setDate(next.getDate() - 7)
+      } else {
+        next.setMonth(next.getMonth() - 1)
+      }
+      return next
+    })
   }
 
   const nextMonth = () => {
-    if (currentMonth === 11) {
-      setCurrentMonth(0)
-      setCurrentYear((year) => year + 1)
-    } else {
-      setCurrentMonth((month) => month + 1)
-    }
+    setFocusDate((prev) => {
+      const next = new Date(prev)
+      if (viewMode === "week") {
+        next.setDate(next.getDate() + 7)
+      } else {
+        next.setMonth(next.getMonth() + 1)
+      }
+      return next
+    })
   }
 
   const selectedEvents = selectedDate ? getEventsForDate(selectedDate) : sortEvents(events).slice(0, 8)
@@ -216,10 +249,22 @@ export function CalendarPage() {
           <h1 className="text-2xl font-bold">Календарь</h1>
           <p className="text-sm text-muted-foreground">Создавайте и редактируйте мероприятия прямо из календаря</p>
         </div>
-        <Button onClick={() => openCreate(`${currentYear}-${String(currentMonth + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`)}>
-          <CalendarPlus className="mr-2 size-4" />
-          Добавить мероприятие
-        </Button>
+        <div className="flex items-center gap-2">
+          <div className="inline-flex rounded-lg border p-1">
+            <Button variant={viewMode === "month" ? "default" : "ghost"} size="sm" onClick={() => setViewMode("month")}>
+              <CalendarIcon className="mr-2 size-4" />
+              Месяц
+            </Button>
+            <Button variant={viewMode === "week" ? "default" : "ghost"} size="sm" onClick={() => setViewMode("week")}>
+              <CalendarRange className="mr-2 size-4" />
+              Неделя
+            </Button>
+          </div>
+          <Button onClick={() => openCreate(toDateKey(focusDate))}>
+            <CalendarPlus className="mr-2 size-4" />
+            Добавить мероприятие
+          </Button>
+        </div>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
@@ -227,7 +272,7 @@ export function CalendarPage() {
           <CardContent className="p-4">
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-lg font-semibold">
-                {monthNames[currentMonth]} {currentYear}
+                {viewMode === "month" ? `${monthNames[currentMonth]} ${currentYear}` : weekLabel}
               </h2>
               <div className="flex gap-1">
                 <Button variant="outline" size="icon" onClick={prevMonth}>
@@ -239,52 +284,100 @@ export function CalendarPage() {
               </div>
             </div>
 
-            <div className="mb-2 grid grid-cols-7 gap-px">
-              {dayNames.map((day) => (
-                <div key={day} className="py-2 text-center text-sm font-medium text-muted-foreground">
-                  {day}
+            {viewMode === "month" ? (
+              <>
+                <div className="mb-2 grid grid-cols-7 gap-px">
+                  {dayNames.map((day) => (
+                    <div key={day} className="py-2 text-center text-sm font-medium text-muted-foreground">
+                      {day}
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
 
-            <div className="grid grid-cols-7 gap-px">
-              {calendarDays.map((day, idx) => {
-                if (!day) {
-                  return <div key={`empty-${idx}`} className="aspect-[1.1] rounded-md" />
-                }
+                <div className="grid grid-cols-7 gap-px">
+                  {calendarDays.map((day, idx) => {
+                    if (!day) {
+                      return <div key={`empty-${idx}`} className="aspect-[1.1] rounded-md" />
+                    }
 
-                const dateStr = `${currentYear}-${String(currentMonth + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`
-                const isToday = dateStr === todayStr
-                const isSelected = dateStr === selectedDate
-                const dayEvents = getEventsForDate(dateStr)
+                    const dateStr = `${currentYear}-${String(currentMonth + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`
+                    const isToday = dateStr === todayStr
+                    const isSelected = dateStr === selectedDate
+                    const dayEvents = getEventsForDate(dateStr)
 
-                return (
-                  <button
-                    key={dateStr}
-                    type="button"
-                    onClick={() => setSelectedDate(isSelected ? null : dateStr)}
-                    onContextMenu={(e) => {
-                      e.preventDefault()
-                      openCreate(dateStr)
-                    }}
-                    className={cn(
-                      "relative flex aspect-[1.1] flex-col items-center justify-start rounded-md border p-1 text-sm transition-colors hover:bg-muted",
-                      isToday && "border-primary bg-muted font-bold text-primary",
-                      isSelected && "ring-2 ring-primary"
-                    )}
-                  >
-                    <span>{day}</span>
-                    {dayEvents.length > 0 && (
-                      <div className="mt-1 flex gap-0.5">
-                        {dayEvents.slice(0, 3).map((event) => (
-                          <div key={event.id} className={cn("size-1.5 rounded-full", event.color)} />
-                        ))}
+                    return (
+                      <button
+                        key={dateStr}
+                        type="button"
+                        onClick={() => setSelectedDate(isSelected ? null : dateStr)}
+                        onContextMenu={(e) => {
+                          e.preventDefault()
+                          openCreate(dateStr)
+                        }}
+                        className={cn(
+                          "relative flex aspect-[1.1] flex-col items-center justify-start rounded-md border p-1 text-sm transition-colors hover:bg-muted",
+                          isToday && "border-primary bg-muted font-bold text-primary",
+                          isSelected && "ring-2 ring-primary"
+                        )}
+                      >
+                        <span>{day}</span>
+                        {dayEvents.length > 0 && (
+                          <div className="mt-1 flex gap-0.5">
+                            {dayEvents.slice(0, 3).map((event) => (
+                              <div key={event.id} className={cn("size-1.5 rounded-full", event.color)} />
+                            ))}
+                          </div>
+                        )}
+                      </button>
+                    )
+                  })}
+                </div>
+              </>
+            ) : (
+              <div className="grid grid-cols-7 gap-2">
+                {weekDays.map((date) => {
+                  const dateStr = toDateKey(date)
+                  const isToday = dateStr === todayStr
+                  const isSelected = dateStr === selectedDate
+                  const dayEvents = getEventsForDate(dateStr)
+                  return (
+                    <button
+                      key={dateStr}
+                      type="button"
+                      onClick={() => setSelectedDate(isSelected ? null : dateStr)}
+                      onContextMenu={(e) => {
+                        e.preventDefault()
+                        openCreate(dateStr)
+                      }}
+                      className={cn(
+                        "flex min-h-[180px] flex-col rounded-xl border p-3 text-left transition-colors hover:bg-muted",
+                        isToday && "border-primary bg-muted text-primary",
+                        isSelected && "ring-2 ring-primary"
+                      )}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-semibold">{dayNames[date.getDay() === 0 ? 6 : date.getDay() - 1]}</span>
+                        <span className="text-xs text-muted-foreground">{date.getDate()}</span>
                       </div>
-                    )}
-                  </button>
-                )
-              })}
-            </div>
+                      <div className="mt-3 flex flex-1 flex-col gap-2">
+                        {dayEvents.length > 0 ? (
+                          dayEvents.slice(0, 4).map((event) => (
+                            <div key={event.id} className="flex items-center gap-2 rounded-lg border bg-background/70 px-2 py-1 text-xs">
+                              <span className={cn("size-2 shrink-0 rounded-full", event.color)} />
+                              <span className="truncate">{event.title}</span>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="flex flex-1 items-center justify-center text-xs text-muted-foreground">
+                            Событий нет
+                          </div>
+                        )}
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
+            )}
           </CardContent>
         </Card>
 

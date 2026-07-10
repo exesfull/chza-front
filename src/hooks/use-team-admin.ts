@@ -35,6 +35,7 @@ interface AdminData {
   team: AdminTeam
   members: AdminMember[]
   invites: TeamInvite[]
+  used_invites: TeamInvite[]
   usage: { tokens: number | null; storage_gb: number | null }
   stats: {
     projects: number
@@ -85,6 +86,7 @@ export function useTeamAdmin(teamLogin?: string) {
     updateSettings: (payload: { name: string; description: string; img_url: string }) => post("updateSettings", payload),
     createInvite: (payload: { name: string; max_uses?: number }) => post("createInvite", payload),
     disableInvite: (inviteId: string) => post("disableInvite", { invite_id: inviteId }),
+    deleteInvite: (inviteId: string) => post("deleteInvite", { invite_id: inviteId }),
     setMemberAdmin: (userId: string, isAdmin: boolean) => post("setMemberAdmin", { user_id: userId, is_admin: isAdmin ? "1" : "0" }),
     removeMember: (userId: string) => post("removeMember", { user_id: userId }),
   }

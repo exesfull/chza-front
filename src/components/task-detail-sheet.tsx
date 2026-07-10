@@ -77,6 +77,7 @@ interface TaskDetailSheetProps {
   onDeleteWidget: (widgetId: string) => Promise<boolean> | boolean
   onAddWidgetRequest: () => void
   initialTab?: TaskTab
+  teamMembers?: Array<{ id: string; first_name: string; last_name: string; img_url: string | null }>
 }
 
 function formatTaskDate(value: string | null | undefined): string {
@@ -169,7 +170,15 @@ function renderHistoryEntry(entry: TaskActivityLog) {
   )
 }
 
-function WidgetBadge({ widget, onSave }: { widget: TaskWidget; onSave: (widgetId: string, value: string) => Promise<boolean> | boolean }) {
+function WidgetBadge({
+  widget,
+  onSave,
+  teamMembers = [],
+}: {
+  widget: TaskWidget
+  onSave: (widgetId: string, value: string) => Promise<boolean> | boolean
+  teamMembers?: Array<{ id: string; first_name: string; last_name: string; img_url: string | null }>
+}) {
   const [currentValue, setCurrentValue] = useState(widget.value || "")
   const [open, setOpen] = useState(false)
 
@@ -183,18 +192,54 @@ function WidgetBadge({ widget, onSave }: { widget: TaskWidget; onSave: (widgetId
       : typeof widget.data?.ruble_color === "string"
         ? String(widget.data.ruble_color)
         : undefined
+
+  const member = widget.type === "assignee" ? teamMembers.find((item) => item.id === widget.value) : null
+  const memberName = member ? [member.last_name, member.first_name].filter(Boolean).join(" ") : ""
+  const memberInitials = member
+    ? [member.first_name, member.last_name]
+        .filter(Boolean)
+        .map((part) => part[0]?.toUpperCase())
+        .join("")
+    : ""
+
+  const iconClass = "size-3.5 shrink-0"
+
   return (
     <>
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="inline-flex items-center gap-1 rounded-full border bg-muted/50 px-2 py-1 text-xs"
-      >
-        {widget.type === "money" ? (
-          <span className="font-semibold" style={moneyColor ? { color: moneyColor } : undefined}>₽</span>
-        ) : null}
-        <span>{currentValue || "—"}</span>
-      </button>
+      {widget.type === "assignee" ? (
+        <div className="inline-flex items-center gap-2 rounded-full border bg-muted/50 px-2 py-1 text-xs">
+          <span className="inline-flex size-5 items-center justify-center rounded-full bg-primary/10 text-primary">
+            <User className={iconClass} />
+          </span>
+          {member ? (
+            <span className="inline-flex items-center gap-1">
+              <span className="flex size-4 overflow-hidden rounded-full bg-muted">
+                {member.img_url ? <img src={member.img_url} alt="" className="size-full object-cover" /> : <span className="flex size-full items-center justify-center text-[10px] font-semibold">{memberInitials || "?"}</span>}
+              </span>
+              <span className="font-medium">{memberName || "Ответственный"}</span>
+            </span>
+          ) : (
+            <span className="font-medium">Ответственный</span>
+          )}
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="inline-flex items-center gap-2 rounded-full border bg-muted/50 px-2 py-1 text-xs"
+        >
+          <span className={cn("inline-flex size-5 items-center justify-center rounded-full", widget.type === "money" ? "bg-amber-500/10 text-amber-500" : "bg-primary/10 text-primary")}>
+            {widget.type === "date" ? <Clock3 className={iconClass} /> : null}
+            {widget.type === "text" ? <Pencil className={iconClass} /> : null}
+            {widget.type === "link" ? <Link2 className={iconClass} /> : null}
+            {widget.type === "email" ? <Mail className={iconClass} /> : null}
+            {widget.type === "phone" ? <Phone className={iconClass} /> : null}
+            {widget.type === "fio" ? <User className={iconClass} /> : null}
+            {widget.type === "money" ? <DollarSign className={iconClass} style={moneyColor ? { color: moneyColor } : undefined} /> : null}
+          </span>
+          <span>{currentValue || "—"}</span>
+        </button>
+      )}
       {open && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4">
           <div className="w-full max-w-md rounded-2xl border bg-background p-4 shadow-xl">
@@ -234,6 +279,7 @@ export function TaskDetailSheet({
   onDeleteWidget,
   onAddWidgetRequest,
   initialTab = "chat",
+  teamMembers = [],
 }: TaskDetailSheetProps) {
   const task = taskData?.task || null
   const [tab, setTab] = useState<TaskTab>("chat")
@@ -330,6 +376,7 @@ export function TaskDetailSheet({
                 <WidgetBadge
                   key={widget.id}
                   widget={widget}
+                  teamMembers={teamMembers}
                   onSave={async (widgetId, value) => !!(await onUpsertWidget({
                     task_id: task.id,
                     widget_id: widgetId,
@@ -571,7 +618,11 @@ export function TaskDetailSheet({
                       <div className="flex flex-wrap gap-2">
                         {widgets.map((widget) => (
                           <div key={widget.id} className="flex items-center gap-2 rounded-full border px-2 py-1">
-                            <WidgetBadge widget={widget} onSave={async (widgetId, value) => !!(await onUpsertWidget({ task_id: task.id, widget_id: widgetId, type: widget.type as WidgetType, title: widget.title, value, data: widget.data }))} />
+                            <WidgetBadge
+                              widget={widget}
+                              teamMembers={teamMembers}
+                              onSave={async (widgetId, value) => !!(await onUpsertWidget({ task_id: task.id, widget_id: widgetId, type: widget.type as WidgetType, title: widget.title, value, data: widget.data }))}
+                            />
                             <Button size="icon" variant="ghost" onClick={() => void onDeleteWidget(widget.id)}>
                               <Trash2 className="size-4" />
                             </Button>
@@ -714,6 +765,21 @@ export function TaskWidgetDialog({
     }
   }
 
+  const handleAssigneePick = async (memberId: string) => {
+    if (!taskId) return
+    const ok = await onUpsertWidget({
+      task_id: taskId,
+      type: "assignee",
+      title: getDefaultWidgetTitle("assignee"),
+      value: memberId,
+      data: { mode: "assignee" },
+    })
+    if (ok) {
+      onSaved?.()
+      onOpenChange(false)
+    }
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[760px]">
@@ -841,7 +907,10 @@ export function TaskWidgetDialog({
                         <button
                           key={member.id}
                           type="button"
-                          onClick={() => setWidgetAssignee(member.id)}
+                          onClick={() => {
+                            setWidgetAssignee(member.id)
+                            void handleAssigneePick(member.id)
+                          }}
                           className={cn(
                             "flex items-center gap-3 rounded-2xl border p-3 text-left transition-colors hover:bg-muted/50",
                             selected && "border-primary bg-primary/5 ring-1 ring-primary"
@@ -870,10 +939,12 @@ export function TaskWidgetDialog({
           </div>
         )}
 
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Отмена</Button>
-          {widgetStep === "form" ? (
+          <DialogFooter>
+            <Button variant="outline" onClick={() => onOpenChange(false)}>Отмена</Button>
+          {widgetStep === "form" && widgetType !== "assignee" ? (
             <Button onClick={() => void handleSave()}>Сохранить</Button>
+          ) : widgetStep === "form" && widgetType === "assignee" ? (
+            <span className="text-sm text-muted-foreground">Выберите пользователя, сохранение произойдёт сразу.</span>
           ) : (
             <Button variant="ghost" onClick={() => onOpenChange(false)}>Закрыть</Button>
           )}

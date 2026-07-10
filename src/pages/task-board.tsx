@@ -856,6 +856,7 @@ export function TaskBoardPage() {
                     onSelectTask={setSelectedTaskId}
                     onOpenTask={handleOpenTask}
                     onAddWidget={handleOpenWidgetForTask}
+                    teamMembers={teamMembers}
                     onConfirmTaskAction={handleConfirmTaskAction}
                   />
                 </div>
@@ -1046,6 +1047,7 @@ export function TaskBoardPage() {
           setWidgetDialogTaskId(activeTaskId || selectedTaskId)
           setWidgetDialogOpen(true)
         }}
+        teamMembers={teamMembers}
       />
 
       <TaskWidgetDialog

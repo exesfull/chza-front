@@ -12,6 +12,7 @@ import {
 } from "lucide-react"
 import { PRIORITY_COLORS } from "@/types/task"
 import { cn } from "@/lib/utils"
+import type { TaskWidget } from "@/types/task"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -43,6 +44,7 @@ interface KanbanCardProps {
   closed_at: string | null
   priority: string
   order: number
+  widgets?: TaskWidget[]
   isSelected: boolean
   onSelect: (id: string) => void
   onToggle: (id: string) => void
@@ -65,6 +67,7 @@ export function KanbanCard({
   closed_at,
   priority,
   isSelected,
+  widgets = [],
   onSelect,
   onToggle,
   onDelete,
@@ -300,6 +303,17 @@ export function KanbanCard({
             >
               {title}
             </span>
+          )}
+
+          {widgets.length > 0 && (
+            <div className="flex flex-wrap gap-1">
+              {widgets.slice(0, 3).map((widget) => (
+                <span key={widget.id} className="rounded-full border bg-muted/40 px-2 py-0.5 text-[10px] text-muted-foreground">
+                  {widget.title}
+                  {widget.value ? ` • ${widget.value}` : ""}
+                </span>
+              ))}
+            </div>
           )}
 
           {editingDesc ? (

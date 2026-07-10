@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react"
 import { api } from "@/lib/api"
-import type { TaskList, TaskColumn, Task, ApiTask } from "@/types/task"
+import type { TaskList, TaskColumn, Task, ApiTask, TaskWidget } from "@/types/task"
 import { COLUMN_COLORS } from "@/types/task"
 
 export type TaskListSort = "name_asc" | "name_desc" | "date_created_asc" | "date_created_desc"
@@ -40,6 +40,21 @@ export interface TaskChatMessage {
   role: string
   content: string
   meta: Record<string, unknown> | null
+  attachments?: Array<{
+    id: string
+    message_id: string
+    task_id: string
+    storage_file_id: string
+    file_name: string
+    mime_type: string | null
+    file_kind: string | null
+    size_bytes: number
+    download_url?: string | null
+    preview_url?: string | null
+  }>
+  is_deleted?: boolean
+  edited_at?: string | null
+  edited_by?: string | null
   created_at: string | null
   updated_at: string | null
 }
@@ -65,6 +80,7 @@ export interface TaskCardData {
   } | null
   messages: TaskChatMessage[]
   history: TaskActivityLog[]
+  widgets: TaskWidget[]
 }
 
 function buildProjectQuery(projectId?: string | null): string {
@@ -370,6 +386,7 @@ export function useTaskLists(teamLogin: string | undefined, projectId?: string |
           created_by: apiTask.created_by,
           created_at: apiTask.created_at,
           updated_at: apiTask.updated_at,
+          widgets: Array.isArray((apiTask as unknown as { widgets?: TaskWidget[] }).widgets) ? (apiTask as unknown as { widgets?: TaskWidget[] }).widgets : [],
         }))
         setTasks(mapped)
         return mapped
@@ -428,6 +445,7 @@ export function useTaskLists(teamLogin: string | undefined, projectId?: string |
           chat: data.data.chat || null,
           messages: Array.isArray(data.data.messages) ? (data.data.messages as TaskChatMessage[]) : [],
           history: Array.isArray(data.data.history) ? (data.data.history as TaskActivityLog[]) : [],
+          widgets: Array.isArray(data.data.widgets) ? (data.data.widgets as TaskWidget[]) : [],
         }
       }
     } catch (error) {
@@ -436,7 +454,7 @@ export function useTaskLists(teamLogin: string | undefined, projectId?: string |
     return null
   }, [teamLogin, projectId])
 
-  const sendTaskMessage = useCallback(async (listId: string, taskId: string, content: string): Promise<TaskChatMessage | null> => {
+  const sendTaskMessage = useCallback(async (listId: string, taskId: string, content: string, files?: File[]): Promise<TaskChatMessage | null> => {
     if (!teamLogin) return null
     try {
       const formData = new FormData()
@@ -444,6 +462,9 @@ export function useTaskLists(teamLogin: string | undefined, projectId?: string |
       formData.append("list_id", listId)
       formData.append("task_id", taskId)
       formData.append("content", content)
+      files?.forEach((file) => {
+        formData.append("files[]", file)
+      })
       if (projectId) {
         formData.append("project_id", projectId)
       }
@@ -650,6 +671,138 @@ export function useTaskLists(teamLogin: string | undefined, projectId?: string |
     return false
   }, [teamLogin, projectId])
 
+  const editTaskMessage = useCallback(async (listId: string, payload: { message_id: string; content?: string; attachment_id?: string; file_name?: string }): Promise<boolean> => {
+    if (!teamLogin) return false
+    try {
+      const formData = new FormData()
+      formData.append("team_login", teamLogin)
+      formData.append("list_id", listId)
+      if (projectId) {
+        formData.append("project_id", projectId)
+      }
+      Object.entries(payload).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && value !== "") {
+          formData.append(key, String(value))
+        }
+      })
+      const { data } = await api.post("/main/task/editTaskMessage/", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      })
+      return data.status === true
+    } catch (error) {
+      console.error("Failed to edit task message:", error)
+      return false
+    }
+  }, [teamLogin, projectId])
+
+  const editTaskAttachment = useCallback(async (listId: string, attachmentId: string, fileName: string): Promise<boolean> => {
+    if (!teamLogin) return false
+    try {
+      const formData = new FormData()
+      formData.append("team_login", teamLogin)
+      formData.append("list_id", listId)
+      formData.append("attachment_id", attachmentId)
+      formData.append("file_name", fileName)
+      if (projectId) {
+        formData.append("project_id", projectId)
+      }
+      const { data } = await api.post("/main/task/editTaskMessage/", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      })
+      return data.status === true
+    } catch (error) {
+      console.error("Failed to rename task attachment:", error)
+      return false
+    }
+  }, [teamLogin, projectId])
+
+  const deleteTaskMessage = useCallback(async (listId: string, messageId: string): Promise<boolean> => {
+    if (!teamLogin) return false
+    try {
+      const formData = new FormData()
+      formData.append("team_login", teamLogin)
+      formData.append("list_id", listId)
+      formData.append("message_id", messageId)
+      if (projectId) {
+        formData.append("project_id", projectId)
+      }
+      const { data } = await api.post("/main/task/deleteTaskMessage/", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      })
+      return data.status === true
+    } catch (error) {
+      console.error("Failed to delete task message:", error)
+      return false
+    }
+  }, [teamLogin, projectId])
+
+  const deleteTaskAttachment = useCallback(async (listId: string, attachmentId: string): Promise<boolean> => {
+    if (!teamLogin) return false
+    try {
+      const formData = new FormData()
+      formData.append("team_login", teamLogin)
+      formData.append("list_id", listId)
+      formData.append("attachment_id", attachmentId)
+      if (projectId) {
+        formData.append("project_id", projectId)
+      }
+      const { data } = await api.post("/main/task/deleteTaskAttachment/", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      })
+      return data.status === true
+    } catch (error) {
+      console.error("Failed to delete task attachment:", error)
+      return false
+    }
+  }, [teamLogin, projectId])
+
+  const upsertTaskWidget = useCallback(async (listId: string, payload: { task_id: string; widget_id?: string; type: string; title: string; value?: string; data?: Record<string, unknown> | null }): Promise<boolean> => {
+    if (!teamLogin) return false
+    try {
+      const formData = new FormData()
+      formData.append("team_login", teamLogin)
+      formData.append("list_id", listId)
+      if (projectId) {
+        formData.append("project_id", projectId)
+      }
+      Object.entries(payload).forEach(([key, value]) => {
+        if (value === undefined || value === null) return
+        if (typeof value === "object") {
+          formData.append(key, JSON.stringify(value))
+        } else {
+          formData.append(key, String(value))
+        }
+      })
+      const { data } = await api.post("/main/task/upsertTaskWidget/", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      })
+      return data.status === true
+    } catch (error) {
+      console.error("Failed to save task widget:", error)
+      return false
+    }
+  }, [teamLogin, projectId])
+
+  const deleteTaskWidget = useCallback(async (listId: string, widgetId: string): Promise<boolean> => {
+    if (!teamLogin) return false
+    try {
+      const formData = new FormData()
+      formData.append("team_login", teamLogin)
+      formData.append("list_id", listId)
+      formData.append("widget_id", widgetId)
+      if (projectId) {
+        formData.append("project_id", projectId)
+      }
+      const { data } = await api.post("/main/task/deleteTaskWidget/", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      })
+      return data.status === true
+    } catch (error) {
+      console.error("Failed to delete task widget:", error)
+      return false
+    }
+  }, [teamLogin, projectId])
+
   // Archive task
   const archiveTask = useCallback(async (listId: string, taskId: string): Promise<boolean> => {
     if (!teamLogin) return false
@@ -797,6 +950,12 @@ export function useTaskLists(teamLogin: string | undefined, projectId?: string |
     updateTaskDescription,
     updateTaskDeadline,
     updateTaskPriority,
+    editTaskMessage,
+    editTaskAttachment,
+    deleteTaskMessage,
+    deleteTaskAttachment,
+    upsertTaskWidget,
+    deleteTaskWidget,
     archiveTask,
     deleteTask,
     moveTask,

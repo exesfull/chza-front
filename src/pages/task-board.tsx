@@ -66,6 +66,12 @@ export function TaskBoardPage() {
     archiveAllTasksInColumn,
     getTaskCard,
     sendTaskMessage,
+    editTaskMessage,
+    editTaskAttachment,
+    deleteTaskMessage,
+    deleteTaskAttachment,
+    upsertTaskWidget,
+    deleteTaskWidget,
   } = useTaskLists(teamLogin, projectId)
 
   const [listInfo, setListInfo] = useState<{ id: string; name: string; description: string; view_type: string } | null>(null)
@@ -346,17 +352,26 @@ export function TaskBoardPage() {
     }
   }, [taskSheetOpen, listId, activeTaskId, getTaskCard])
 
-  const handleSendTaskMessage = useCallback(async (taskId: string, content: string) => {
+  const handleSendTaskMessageWithFiles = useCallback(async (taskId: string, content: string, files?: File[]) => {
     if (!listId) return null
-    const sent = await sendTaskMessage(listId, taskId, content)
+    const sent = await sendTaskMessage(listId, taskId, content, files)
     if (sent && activeTaskId === taskId) {
       const refreshed = await getTaskCard(listId, taskId)
-      if (refreshed) {
-        setActiveTaskData(refreshed)
-      }
+      if (refreshed) setActiveTaskData(refreshed)
     }
     return sent
   }, [listId, sendTaskMessage, getTaskCard, activeTaskId])
+
+  useEffect(() => {
+    if (!taskSheetOpen || !listId || !activeTaskId) return
+    const timer = window.setInterval(async () => {
+      const refreshed = await getTaskCard(listId, activeTaskId)
+      if (refreshed) {
+        setActiveTaskData(refreshed)
+      }
+    }, 3000)
+    return () => window.clearInterval(timer)
+  }, [taskSheetOpen, listId, activeTaskId, getTaskCard])
 
   const refreshActiveTask = useCallback(async (taskId: string) => {
     if (!listId || activeTaskId !== taskId) return
@@ -977,7 +992,13 @@ export function TaskBoardPage() {
             setTaskSheetOpen(false)
           }
         }}
-        onSendMessage={handleSendTaskMessage}
+        onSendMessage={handleSendTaskMessageWithFiles}
+        onEditMessage={(messageId, content) => listId ? editTaskMessage(listId, { message_id: messageId, content }) : false}
+        onDeleteMessage={(messageId) => listId ? deleteTaskMessage(listId, messageId) : false}
+        onEditAttachment={(attachmentId, fileName) => listId ? editTaskAttachment(listId, attachmentId, fileName) : false}
+        onDeleteAttachment={(attachmentId) => listId ? deleteTaskAttachment(listId, attachmentId) : false}
+        onUpsertWidget={(payload) => listId ? upsertTaskWidget(listId, payload) : false}
+        onDeleteWidget={(widgetId) => listId ? deleteTaskWidget(listId, widgetId) : false}
       />
     </div>
   )

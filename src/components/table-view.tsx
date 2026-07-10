@@ -431,6 +431,15 @@ export function TableView({
                       {task.title}
                     </div>
                   )}
+                  {task.widgets?.length ? (
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {task.widgets.slice(0, 3).map((widget) => (
+                        <span key={widget.id} className="rounded-full border bg-muted/40 px-2 py-0.5 text-[10px] text-muted-foreground">
+                          {widget.title}
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
                   {editingDescId === task.id ? (
                     <Textarea
                       value={editingDescText}

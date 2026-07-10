@@ -338,6 +338,7 @@ export function KanbanColumn({
             closed_at={task.closed_at}
             priority={task.priority}
             order={task.order}
+            widgets={task.widgets}
             isSelected={selectedTaskId === task.id}
             onSelect={(id) => onSelectTask(selectedTaskId === id ? null : id)}
             onToggle={onToggleTask}

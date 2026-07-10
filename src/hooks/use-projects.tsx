@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { api } from "@/lib/api"
 
+const projectCache = new Map<string, ProjectDetail>()
+const projectInFlight = new Map<string, Promise<ProjectDetail | null>>()
+
 export interface ProjectInfo {
   id: string
   name: string
@@ -123,18 +126,38 @@ export function useProjects(teamLogin?: string, options?: { autoLoad?: boolean }
       return null
     }
 
-    try {
-      const { data } = await api.get(`/main/project/get/?team_login=${teamLogin}&project_id=${projectId}`)
-      if (data.status && data.data) {
-        return data.data as ProjectDetail
-      }
-    } catch (error) {
-      if ((error as { response?: { status?: number } })?.response?.status !== 401) {
-        console.error("Failed to fetch project:", error)
-      }
+    const cacheKey = `${teamLogin}:${projectId}`
+    const cached = projectCache.get(cacheKey)
+    if (cached) {
+      return cached
     }
 
-    return null
+    const inFlight = projectInFlight.get(cacheKey)
+    if (inFlight) {
+      return inFlight
+    }
+
+    const request = (async () => {
+      try {
+        const { data } = await api.get(`/main/project/get/?team_login=${teamLogin}&project_id=${projectId}`)
+        if (data.status && data.data) {
+          const project = data.data as ProjectDetail
+          projectCache.set(cacheKey, project)
+          return project
+        }
+      } catch (error) {
+        if ((error as { response?: { status?: number } })?.response?.status !== 401) {
+          console.error("Failed to fetch project:", error)
+        }
+      } finally {
+        projectInFlight.delete(cacheKey)
+      }
+
+      return null
+    })()
+
+    projectInFlight.set(cacheKey, request)
+    return request
   }, [teamLogin])
 
   const createProject = useCallback(async (payload: { name: string; description?: string; member_ids?: string }) => {
@@ -151,6 +174,7 @@ export function useProjects(teamLogin?: string, options?: { autoLoad?: boolean }
     if (data.status && data.data) {
       const project = normalizeProject(data.data as ProjectInfo)
       setProjects((prev) => [project, ...prev.filter((item) => item.id !== project.id)])
+      projectCache.delete(`${teamLogin}:${project.id}`)
       return project
     }
 
@@ -167,6 +191,7 @@ export function useProjects(teamLogin?: string, options?: { autoLoad?: boolean }
     )
 
     if (data.status && data.data) {
+      projectCache.delete(`${teamLogin}:${projectId}`)
       return data.data as ProjectItem
     }
 
@@ -183,6 +208,7 @@ export function useProjects(teamLogin?: string, options?: { autoLoad?: boolean }
     )
 
     if (data.status && data.data) {
+      projectCache.delete(`${teamLogin}:${itemId}`)
       return data.data as ProjectItem
     }
 
@@ -199,6 +225,7 @@ export function useProjects(teamLogin?: string, options?: { autoLoad?: boolean }
     )
 
     if (data.status && data.data) {
+      projectCache.delete(`${teamLogin}:${itemId}`)
       return data.data as ProjectItem
     }
 
@@ -231,6 +258,7 @@ export function useProjects(teamLogin?: string, options?: { autoLoad?: boolean }
     if (data.status && data.data) {
       const project = normalizeProject(data.data as ProjectInfo)
       setProjects((prev) => prev.map((item) => item.id === project.id ? project : item))
+      projectCache.delete(`${teamLogin}:${projectId}`)
       return project
     }
 
@@ -251,6 +279,7 @@ export function useProjects(teamLogin?: string, options?: { autoLoad?: boolean }
     })
 
     if (data.status && data.data) {
+      projectCache.delete(`${teamLogin}:${projectId}`)
       return data.data as ProjectDetail
     }
 
@@ -270,6 +299,7 @@ export function useProjects(teamLogin?: string, options?: { autoLoad?: boolean }
     })
 
     if (data.status && data.data) {
+      projectCache.delete(`${teamLogin}:${projectId}`)
       return data.data as ProjectDetail
     }
 
@@ -289,6 +319,7 @@ export function useProjects(teamLogin?: string, options?: { autoLoad?: boolean }
 
     if (data.status) {
       setProjects((prev) => prev.filter((item) => item.id !== projectId))
+      projectCache.delete(`${teamLogin}:${projectId}`)
       return true
     }
 

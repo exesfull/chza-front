@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { format } from "date-fns"
 import { ru } from "date-fns/locale"
 import {
-  Archive,
   Check,
   Clock3,
   Edit3,
@@ -34,9 +33,10 @@ import { Separator } from "@/components/ui/separator"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import type { TaskWidget } from "@/types/task"
+import { cn } from "@/lib/utils"
 
 type TaskTab = "chat" | "info" | "history"
-type WidgetType = "date" | "text" | "link" | "email" | "phone" | "fio" | "money" | "income_expense" | "assignee"
+type WidgetType = "date" | "text" | "link" | "email" | "phone" | "fio" | "money" | "assignee"
 
 interface TaskDetailSheetProps {
   open: boolean
@@ -58,6 +58,8 @@ interface TaskDetailSheetProps {
   onDeleteAttachment: (attachmentId: string) => Promise<boolean> | boolean
   onUpsertWidget: (payload: { task_id: string; widget_id?: string; type: WidgetType; title: string; value?: string; data?: Record<string, unknown> | null }) => Promise<boolean> | boolean
   onDeleteWidget: (widgetId: string) => Promise<boolean> | boolean
+  widgetDialogOpen: boolean
+  onWidgetDialogOpenChange: (open: boolean) => void
   teamMembers?: Array<{ id: string; first_name: string; last_name: string; img_url: string | null }>
 }
 
@@ -102,6 +104,46 @@ function formatBytes(bytes: number | null | undefined): string {
   return `${size >= 10 || index === 0 ? size.toFixed(0) : size.toFixed(1)} ${units[index]}`
 }
 
+const WIDGET_OPTIONS: Array<{
+  type: WidgetType
+  title: string
+  description: string
+  icon: typeof Clock3
+  className: string
+}> = [
+  { type: "text", title: "Текст", description: "Просто текстовая заметка", icon: Pencil, className: "from-slate-500 to-slate-700" },
+  { type: "date", title: "Дата", description: "Дата и время", icon: Clock3, className: "from-sky-500 to-cyan-600" },
+  { type: "link", title: "Ссылка", description: "URL или переход", icon: Link2, className: "from-emerald-500 to-green-600" },
+  { type: "email", title: "Почта", description: "Email адрес", icon: Mail, className: "from-indigo-500 to-violet-600" },
+  { type: "phone", title: "Телефон", description: "Номер телефона", icon: Phone, className: "from-amber-500 to-orange-600" },
+  { type: "fio", title: "ФИО", description: "Имя и фамилия", icon: User, className: "from-pink-500 to-rose-600" },
+  { type: "money", title: "Сумма", description: "Сумма с цветом рубля", icon: DollarSign, className: "from-teal-500 to-cyan-600" },
+  { type: "assignee", title: "Ответственный", description: "Пользователь команды", icon: User, className: "from-fuchsia-500 to-purple-600" },
+]
+
+function getDefaultWidgetTitle(type: WidgetType): string {
+  switch (type) {
+    case "date":
+      return "Дата"
+    case "text":
+      return "Текст"
+    case "link":
+      return "Ссылка"
+    case "email":
+      return "Почта"
+    case "phone":
+      return "Телефон"
+    case "fio":
+      return "ФИО"
+    case "money":
+      return "Сумма"
+    case "assignee":
+      return "Ответственный"
+    default:
+      return "Виджет"
+  }
+}
+
 function renderHistoryEntry(entry: TaskActivityLog) {
   return (
     <div key={entry.id} className="rounded-xl border bg-background/60 p-3">
@@ -132,7 +174,6 @@ function WidgetBadge({ widget, onSave }: { widget: TaskWidget; onSave: (widgetId
       case "fio":
         return User
       case "money":
-      case "income_expense":
         return DollarSign
       case "assignee":
         return User
@@ -142,6 +183,12 @@ function WidgetBadge({ widget, onSave }: { widget: TaskWidget; onSave: (widgetId
   })()
 
   const Icon = icon
+  const moneyColor =
+    typeof widget.data?.color === "string"
+      ? String(widget.data.color)
+      : typeof widget.data?.ruble_color === "string"
+        ? String(widget.data.ruble_color)
+        : undefined
   return (
     <>
       <button
@@ -149,7 +196,7 @@ function WidgetBadge({ widget, onSave }: { widget: TaskWidget; onSave: (widgetId
         onClick={() => setOpen(true)}
         className="inline-flex items-center gap-1 rounded-full border bg-muted/50 px-2 py-1 text-xs"
       >
-        <Icon className="size-3.5" />
+        <Icon className="size-3.5" style={moneyColor ? { color: moneyColor } : undefined} />
         {widget.title}
         {currentValue ? <span className="opacity-80">• {currentValue}</span> : null}
       </button>
@@ -183,8 +230,6 @@ export function TaskDetailSheet({
   onUpdatePriority,
   onUpdateColumn,
   onToggleTask,
-  onArchiveTask,
-  onDeleteTask,
   onSendMessage,
   onEditMessage,
   onDeleteMessage,
@@ -192,6 +237,8 @@ export function TaskDetailSheet({
   onDeleteAttachment,
   onUpsertWidget,
   onDeleteWidget,
+  widgetDialogOpen,
+  onWidgetDialogOpenChange,
   teamMembers = [],
 }: TaskDetailSheetProps) {
   const task = taskData?.task || null
@@ -206,11 +253,12 @@ export function TaskDetailSheet({
   const [selectedFiles, setSelectedFiles] = useState<Array<{ file: File; name: string }>>([])
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null)
   const [editingMessageText, setEditingMessageText] = useState("")
-  const [widgetDialogOpen, setWidgetDialogOpen] = useState(false)
+  const [widgetStep, setWidgetStep] = useState<"select" | "form">("select")
   const [widgetType, setWidgetType] = useState<WidgetType>("text")
-  const [widgetTitle, setWidgetTitle] = useState("")
   const [widgetValue, setWidgetValue] = useState("")
-  const [widgetData, setWidgetData] = useState("")
+  const [widgetDate, setWidgetDate] = useState("")
+  const [widgetColor, setWidgetColor] = useState("#111111")
+  const [widgetAssignee, setWidgetAssignee] = useState("")
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   useEffect(() => {
@@ -229,9 +277,20 @@ export function TaskDetailSheet({
       setSelectedFiles([])
       setEditingMessageId(null)
       setEditingMessageText("")
-      setWidgetDialogOpen(false)
+      onWidgetDialogOpenChange(false)
     }
-  }, [open])
+  }, [open, onWidgetDialogOpenChange])
+
+  useEffect(() => {
+    if (!widgetDialogOpen) {
+      setWidgetStep("select")
+      setWidgetType("text")
+      setWidgetValue("")
+      setWidgetDate("")
+      setWidgetColor("#111111")
+      setWidgetAssignee("")
+    }
+  }, [widgetDialogOpen])
 
   const currentColumnName = useMemo(() => columns.find((col) => col.id === draftColumnId)?.name || "Без этапа", [columns, draftColumnId])
   const widgets = taskData?.widgets || []
@@ -260,28 +319,64 @@ export function TaskDetailSheet({
     if (draftDeadline) await onUpdateDeadline(task.id, new Date(draftDeadline).toISOString())
   }
 
+  const handleWidgetTypeSelect = (type: WidgetType) => {
+    setWidgetType(type)
+    setWidgetStep("form")
+    setWidgetValue("")
+    setWidgetDate("")
+    setWidgetColor("#111111")
+    setWidgetAssignee("")
+  }
+
   const handleWidgetSave = async () => {
-    if (!task || !widgetTitle.trim()) return
-    let parsed: Record<string, unknown> | null = null
-    if (widgetData.trim()) {
-      try {
-        parsed = JSON.parse(widgetData)
-      } catch {
-        parsed = { value: widgetData.trim() }
-      }
+    if (!task) return
+
+    const title = getDefaultWidgetTitle(widgetType)
+    let value = ""
+    let data: Record<string, unknown> | null = null
+
+    switch (widgetType) {
+      case "text":
+        value = widgetValue.trim()
+        if (!value) return
+        break
+      case "date":
+        value = widgetDate ? new Date(widgetDate).toISOString() : ""
+        if (!value) return
+        data = { mode: "date" }
+        break
+      case "link":
+      case "email":
+      case "phone":
+      case "fio":
+        value = widgetValue.trim()
+        if (!value) return
+        data = { mode: widgetType }
+        break
+      case "money":
+        value = widgetValue.trim()
+        if (!value) return
+        data = { ruble_color: widgetColor }
+        break
+      case "assignee":
+        value = widgetAssignee
+        if (!value) return
+        data = { mode: "assignee" }
+        break
+      default:
+        break
     }
-    await onUpsertWidget({
+
+    const ok = await onUpsertWidget({
       task_id: task.id,
       type: widgetType,
-      title: widgetTitle.trim(),
-      value: widgetValue.trim() || undefined,
-      data: parsed,
+      title,
+      value,
+      data,
     })
-    setWidgetDialogOpen(false)
-    setWidgetTitle("")
-    setWidgetValue("")
-    setWidgetData("")
-    setWidgetType("text")
+    if (ok) {
+      onWidgetDialogOpenChange(false)
+    }
   }
 
   if (!task) {
@@ -303,12 +398,27 @@ export function TaskDetailSheet({
               <SheetTitle className="text-xl">{task.title}</SheetTitle>
               {task.closed_at && <Badge variant="secondary">Выполнена</Badge>}
               {task.priority && <Badge variant="outline">{task.priority}</Badge>}
-              {widgets.map((widget) => <WidgetBadge key={widget.id} widget={widget} onSave={async (widgetId, value) => !!(await onUpsertWidget({ task_id: task.id, widget_id: widgetId, type: widget.type as WidgetType, title: widget.title, value, data: widget.data }))} />)}
             </div>
             <SheetDescription className="flex flex-wrap items-center gap-2">
               <span className="flex items-center gap-1"><ListTodo className="size-4" />{currentColumnName}</span>
               <span className="flex items-center gap-1"><Clock3 className="size-4" />{formatTaskDate(task.deadline_date)}</span>
             </SheetDescription>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {widgets.map((widget) => (
+                <WidgetBadge
+                  key={widget.id}
+                  widget={widget}
+                  onSave={async (widgetId, value) => !!(await onUpsertWidget({
+                    task_id: task.id,
+                    widget_id: widgetId,
+                    type: widget.type as WidgetType,
+                    title: widget.title,
+                    value,
+                    data: widget.data,
+                  }))}
+                />
+              ))}
+            </div>
           </SheetHeader>
 
           <div className="flex items-center gap-2 border-b px-6 py-3">
@@ -322,16 +432,6 @@ export function TaskDetailSheet({
                 {label}
               </Button>
             ))}
-            <div className="ml-auto flex items-center gap-2">
-              <Button variant="outline" size="sm" onClick={() => onArchiveTask(task.id)}>
-                <Archive className="mr-2 size-4" />
-                В архив
-              </Button>
-              <Button variant="destructive" size="sm" onClick={() => onDeleteTask(task.id)}>
-                <Trash2 className="mr-2 size-4" />
-                Удалить
-              </Button>
-            </div>
           </div>
 
           <div className="flex min-h-0 flex-1 flex-col">
@@ -538,7 +638,7 @@ export function TaskDetailSheet({
                   <div className="flex flex-col gap-3">
                     <div className="flex items-center justify-between gap-2">
                       <h3 className="font-semibold">Виджеты</h3>
-                      <Button size="sm" variant="outline" onClick={() => setWidgetDialogOpen(true)}>
+                      <Button size="sm" variant="outline" onClick={() => onWidgetDialogOpenChange(true)}>
                         <Plus className="mr-2 size-4" />
                         Добавить виджет
                       </Button>
@@ -588,61 +688,135 @@ export function TaskDetailSheet({
         </div>
       </SheetContent>
 
-      <Dialog open={widgetDialogOpen} onOpenChange={setWidgetDialogOpen}>
-        <DialogContent className="sm:max-w-[640px]">
+      <Dialog open={widgetDialogOpen} onOpenChange={onWidgetDialogOpenChange}>
+        <DialogContent className="sm:max-w-[760px]">
           <DialogHeader>
             <DialogTitle>Добавить виджет</DialogTitle>
-            <DialogDescription>Выберите тип бейджа и заполните данные.</DialogDescription>
+            <DialogDescription>
+              Сначала выберите тип карточкой, потом заполните только нужные поля.
+            </DialogDescription>
           </DialogHeader>
-          <div className="grid gap-4 py-2 md:grid-cols-2">
-            <div className="flex flex-col gap-2">
-              <label className="text-sm font-medium">Тип</label>
-              <Select value={widgetType} onValueChange={(value) => setWidgetType(value as WidgetType)}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="date">Дата</SelectItem>
-                  <SelectItem value="text">Текст</SelectItem>
-                  <SelectItem value="link">Ссылка</SelectItem>
-                  <SelectItem value="email">Почта</SelectItem>
-                  <SelectItem value="phone">Телефон</SelectItem>
-                  <SelectItem value="fio">ФИО</SelectItem>
-                  <SelectItem value="money">Сумма</SelectItem>
-                  <SelectItem value="income_expense">Доход / расход</SelectItem>
-                  <SelectItem value="assignee">Ответственный</SelectItem>
-                </SelectContent>
-              </Select>
+
+          {widgetStep === "select" ? (
+            <div className="grid gap-3 py-2 sm:grid-cols-2">
+              {WIDGET_OPTIONS.map((option) => {
+                const Icon = option.icon
+                return (
+                  <button
+                    key={option.type}
+                    type="button"
+                    onClick={() => handleWidgetTypeSelect(option.type)}
+                    className={cn(
+                      "group rounded-2xl border p-4 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md",
+                      "bg-gradient-to-br",
+                      option.className
+                    )}
+                  >
+                    <div className="flex items-start justify-between gap-3 text-white">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <Icon className="size-5" />
+                          <p className="font-semibold">{option.title}</p>
+                        </div>
+                        <p className="mt-2 text-sm/5 text-white/85">{option.description}</p>
+                      </div>
+                      <span className="rounded-full border border-white/30 bg-white/10 px-2 py-1 text-[11px] uppercase tracking-wide text-white/80">
+                        Выбрать
+                      </span>
+                    </div>
+                  </button>
+                )
+              })}
             </div>
-            <div className="flex flex-col gap-2">
-              <label className="text-sm font-medium">Название</label>
-              <Input value={widgetTitle} onChange={(e) => setWidgetTitle(e.target.value)} placeholder="Например, Чекин" />
-            </div>
-            <div className="flex flex-col gap-2 md:col-span-2">
-              <label className="text-sm font-medium">Значение</label>
-              <Input value={widgetValue} onChange={(e) => setWidgetValue(e.target.value)} placeholder="Текст, сумма, ссылка..." />
-            </div>
-            <div className="flex flex-col gap-2 md:col-span-2">
-              <label className="text-sm font-medium">Доп. данные JSON</label>
-              <Textarea value={widgetData} onChange={(e) => setWidgetData(e.target.value)} rows={4} placeholder='{"amount": 1000, "kind":"income"}' />
-            </div>
-            {widgetType === "assignee" && teamMembers.length > 0 && (
-              <div className="flex flex-col gap-2 md:col-span-2">
-                <label className="text-sm font-medium">Выбрать пользователя</label>
-                <Select value={widgetValue} onValueChange={(value) => setWidgetValue(value)}>
-                  <SelectTrigger><SelectValue placeholder="Пользователь" /></SelectTrigger>
-                  <SelectContent>
-                    {teamMembers.map((member) => (
-                      <SelectItem key={member.id} value={member.id}>
-                        {[member.last_name, member.first_name].filter(Boolean).join(" ")}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+          ) : (
+            <div className="grid gap-4 py-2">
+              <div className="rounded-2xl border bg-muted/30 p-4">
+                <div className="mb-3 flex items-center justify-between gap-2">
+                  <div>
+                    <p className="text-sm text-muted-foreground">Тип виджета</p>
+                    <p className="text-lg font-semibold">{getDefaultWidgetTitle(widgetType)}</p>
+                  </div>
+                  <Button variant="ghost" size="sm" onClick={() => setWidgetStep("select")}>
+                    Изменить тип
+                  </Button>
+                </div>
+
+                {widgetType === "text" && (
+                  <div className="flex flex-col gap-2">
+                    <label className="text-sm font-medium">Текст</label>
+                    <Textarea value={widgetValue} onChange={(e) => setWidgetValue(e.target.value)} rows={4} placeholder="Введите текст" />
+                  </div>
+                )}
+
+                {widgetType === "date" && (
+                  <div className="flex flex-col gap-2">
+                    <label className="text-sm font-medium">Дата и время</label>
+                    <Input type="datetime-local" value={widgetDate} onChange={(e) => setWidgetDate(e.target.value)} />
+                  </div>
+                )}
+
+                {["link", "email", "phone", "fio"].includes(widgetType) && (
+                  <div className="flex flex-col gap-2">
+                    <label className="text-sm font-medium">
+                      {widgetType === "link" ? "Ссылка" : widgetType === "email" ? "Почта" : widgetType === "phone" ? "Телефон" : "ФИО"}
+                    </label>
+                    <Input
+                      value={widgetValue}
+                      onChange={(e) => setWidgetValue(e.target.value)}
+                      placeholder={
+                        widgetType === "link"
+                          ? "https://..."
+                          : widgetType === "email"
+                            ? "name@example.com"
+                            : widgetType === "phone"
+                              ? "+7 ..."
+                              : "Фамилия Имя"
+                      }
+                    />
+                  </div>
+                )}
+
+                {widgetType === "money" && (
+                  <div className="grid gap-4 sm:grid-cols-[1fr_auto]">
+                    <div className="flex flex-col gap-2">
+                      <label className="text-sm font-medium">Сумма</label>
+                      <Input value={widgetValue} onChange={(e) => setWidgetValue(e.target.value)} placeholder="10000" />
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      <label className="text-sm font-medium">Цвет рубля</label>
+                      <Input type="color" value={widgetColor} onChange={(e) => setWidgetColor(e.target.value)} className="h-10 w-20 p-1" />
+                    </div>
+                  </div>
+                )}
+
+                {widgetType === "assignee" && (
+                  <div className="flex flex-col gap-2">
+                    <label className="text-sm font-medium">Ответственный</label>
+                    <Select value={widgetAssignee} onValueChange={setWidgetAssignee}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Выберите пользователя" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {teamMembers.map((member) => (
+                          <SelectItem key={member.id} value={member.id}>
+                            {[member.last_name, member.first_name].filter(Boolean).join(" ")}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
+            </div>
+          )}
+
           <DialogFooter>
-            <Button variant="outline" onClick={() => setWidgetDialogOpen(false)}>Отмена</Button>
-            <Button onClick={() => void handleWidgetSave()}>Сохранить</Button>
+            <Button variant="outline" onClick={() => onWidgetDialogOpenChange(false)}>Отмена</Button>
+            {widgetStep === "form" ? (
+              <Button onClick={() => void handleWidgetSave()}>Сохранить</Button>
+            ) : (
+              <Button variant="ghost" onClick={() => onWidgetDialogOpenChange(false)}>Закрыть</Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

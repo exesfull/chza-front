@@ -53,6 +53,7 @@ interface KanbanColumnProps {
   onSelectTask: (id: string | null) => void
   onOpenTask: (id: string) => void
   onConfirmTaskAction: (id: string) => void
+  onAddWidget: (id: string) => void
   editListCol?: (listId: string, colId: string, updates: { name?: string; description?: string; color_hex?: string; is_deleted?: boolean }) => Promise<boolean>
   onColumnUpdated?: () => void
 }
@@ -87,6 +88,7 @@ export function KanbanColumn({
   onSelectTask,
   onOpenTask,
   onConfirmTaskAction,
+  onAddWidget,
   editListCol,
   onColumnUpdated,
 }: KanbanColumnProps) {
@@ -351,6 +353,7 @@ export function KanbanColumn({
             onDragStart={onDragStartTask}
             onDragEnd={onDragEndTask}
             onOpenTask={onOpenTask}
+            onAddWidget={onAddWidget}
           />
         ))}
       </div>

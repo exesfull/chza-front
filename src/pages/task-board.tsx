@@ -88,6 +88,7 @@ export function TaskBoardPage() {
   const [confirmTaskId, setConfirmTaskId] = useState<string | null>(null)
   const [taskSheetOpen, setTaskSheetOpen] = useState(false)
   const [taskSheetLoading, setTaskSheetLoading] = useState(false)
+  const [widgetDialogOpen, setWidgetDialogOpen] = useState(false)
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null)
   const [activeTaskData, setActiveTaskData] = useState<TaskCardData | null>(null)
   const [listUpdatedAt, setListUpdatedAt] = useState<string | null>(null)
@@ -323,7 +324,15 @@ export function TaskBoardPage() {
   const handleOpenTask = useCallback((taskId: string) => {
     setSelectedTaskId(taskId)
     setActiveTaskId(taskId)
+    setWidgetDialogOpen(false)
     setTaskSheetOpen(true)
+  }, [])
+
+  const handleOpenWidgetForTask = useCallback((taskId: string) => {
+    setSelectedTaskId(taskId)
+    setActiveTaskId(taskId)
+    setTaskSheetOpen(true)
+    setWidgetDialogOpen(true)
   }, [])
 
   useEffect(() => {
@@ -830,6 +839,7 @@ export function TaskBoardPage() {
                     selectedTaskId={selectedTaskId}
                     onSelectTask={setSelectedTaskId}
                     onOpenTask={handleOpenTask}
+                    onAddWidget={handleOpenWidgetForTask}
                     onConfirmTaskAction={handleConfirmTaskAction}
                   />
                 </div>
@@ -935,7 +945,10 @@ export function TaskBoardPage() {
 
       <TaskDetailSheet
         open={taskSheetOpen}
-        onOpenChange={setTaskSheetOpen}
+        onOpenChange={(open) => {
+          setTaskSheetOpen(open)
+          if (!open) setWidgetDialogOpen(false)
+        }}
         taskData={taskSheetLoading ? null : activeTaskData}
         columns={columns}
         onUpdateText={(taskId, text) => {
@@ -999,6 +1012,8 @@ export function TaskBoardPage() {
         onDeleteAttachment={(attachmentId) => listId ? deleteTaskAttachment(listId, attachmentId) : false}
         onUpsertWidget={(payload) => listId ? upsertTaskWidget(listId, payload) : false}
         onDeleteWidget={(widgetId) => listId ? deleteTaskWidget(listId, widgetId) : false}
+        widgetDialogOpen={widgetDialogOpen}
+        onWidgetDialogOpenChange={setWidgetDialogOpen}
       />
     </div>
   )

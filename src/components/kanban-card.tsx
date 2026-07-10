@@ -9,6 +9,7 @@ import {
   Archive,
   AlertTriangle,
   CalendarIcon,
+  Plus,
 } from "lucide-react"
 import { PRIORITY_COLORS } from "@/types/task"
 import { cn } from "@/lib/utils"
@@ -57,6 +58,7 @@ interface KanbanCardProps {
   onDragStart: (taskId: string) => void
   onDragEnd: () => void
   onOpenTask: (id: string) => void
+  onAddWidget: (id: string) => void
 }
 
 export function KanbanCard({
@@ -79,6 +81,7 @@ export function KanbanCard({
   onDragStart,
   onDragEnd,
   onOpenTask,
+  onAddWidget,
 }: KanbanCardProps) {
   const [editing, setEditing] = useState(false)
   const [editText, setEditText] = useState(title)
@@ -161,7 +164,12 @@ export function KanbanCard({
               <MoreHorizontal className="size-4" />
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="min-w-[200px]">
+        <DropdownMenuContent align="end" className="min-w-[200px]">
+            <DropdownMenuItem onClick={() => onAddWidget(id)}>
+              <Plus className="mr-2 size-4" />
+              Добавить виджет
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => onToggle(id)}>
               <Check className="mr-2 size-4" />
               {isCompleted ? "Отметить невыполненной" : "Отметить выполненной"}
@@ -305,17 +313,6 @@ export function KanbanCard({
             </span>
           )}
 
-          {widgets.length > 0 && (
-            <div className="flex flex-wrap gap-1">
-              {widgets.slice(0, 3).map((widget) => (
-                <span key={widget.id} className="rounded-full border bg-muted/40 px-2 py-0.5 text-[10px] text-muted-foreground">
-                  {widget.title}
-                  {widget.value ? ` • ${widget.value}` : ""}
-                </span>
-              ))}
-            </div>
-          )}
-
           {editingDesc ? (
             <div className="flex flex-col gap-2">
               <Textarea
@@ -363,6 +360,16 @@ export function KanbanCard({
               </span>
             )}
           </div>
+          {widgets.length > 0 && (
+            <div className="flex flex-wrap gap-1 pt-1">
+              {widgets.slice(0, 3).map((widget) => (
+                <span key={widget.id} className="rounded-full border bg-muted/40 px-2 py-0.5 text-[10px] text-muted-foreground">
+                  {widget.title}
+                  {widget.value ? ` • ${widget.value}` : ""}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
       </div>
       </div>

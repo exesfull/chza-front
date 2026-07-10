@@ -795,7 +795,8 @@ export function ProjectPage() {
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
             {visibleItems.map((item) => {
               const Icon = getProjectItemIcon(item.type, item.file_kind)
-              const isImageFile = item.type === "file" && item.file_kind === "image" && Boolean(item.preview_url)
+              const imageSrc = item.preview_url || item.public_url || ""
+              const isImageFile = item.type === "file" && item.file_kind === "image" && Boolean(imageSrc)
               const kindLabel = item.type === "file" ? getFileKindLabel(item.file_kind) : getItemKindLabel(item)
               return (
                 <button
@@ -830,9 +831,9 @@ export function ProjectPage() {
                   {isImageFile ? (
                     <>
                       <div className="absolute inset-0">
-                        <img src={item.preview_url || ""} alt={item.title} className="h-full w-full scale-110 object-cover blur-2xl brightness-75" />
+                        <img src={imageSrc} alt={item.title} className="h-full w-full scale-110 object-cover blur-2xl brightness-75" />
                         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/45 to-black/10" />
-                        <img src={item.preview_url || ""} alt={item.title} className="absolute inset-0 h-full w-full object-contain p-4" />
+                        <img src={imageSrc} alt={item.title} className="absolute inset-0 h-full w-full object-contain p-4" />
                       </div>
                       <div className="relative z-10 flex flex-1 flex-col justify-between p-4">
                         <div className="flex items-start justify-between gap-3">
@@ -1271,14 +1272,14 @@ export function ProjectPage() {
                     </Button>
                   )}
                 </div>
-                {previewItem.file_kind === "image" && previewItem.preview_url ? (
-                  <img src={previewItem.preview_url} alt={previewItem.title} className="max-h-[70vh] w-full rounded-2xl object-contain" />
-                ) : previewItem.file_kind === "video" && previewItem.preview_url ? (
-                  <video src={previewItem.preview_url} controls className="max-h-[70vh] w-full rounded-2xl" />
-                ) : previewItem.file_kind === "pdf" && previewItem.preview_url ? (
-                  <iframe src={previewItem.preview_url} className="h-[70vh] w-full rounded-2xl border-0" />
-                ) : previewItem.preview_url ? (
-                  <iframe src={previewItem.preview_url} className="h-[70vh] w-full rounded-2xl border-0" />
+                {previewItem.file_kind === "image" && (previewItem.preview_url || previewItem.public_url) ? (
+                  <img src={previewItem.preview_url || previewItem.public_url || ""} alt={previewItem.title} className="max-h-[70vh] w-full rounded-2xl object-contain" />
+                ) : previewItem.file_kind === "video" && (previewItem.preview_url || previewItem.public_url) ? (
+                  <video src={previewItem.preview_url || previewItem.public_url || ""} controls className="max-h-[70vh] w-full rounded-2xl" />
+                ) : previewItem.file_kind === "pdf" && (previewItem.preview_url || previewItem.public_url) ? (
+                  <iframe src={previewItem.preview_url || previewItem.public_url || ""} className="h-[70vh] w-full rounded-2xl border-0" />
+                ) : (previewItem.preview_url || previewItem.public_url) ? (
+                  <iframe src={previewItem.preview_url || previewItem.public_url || ""} className="h-[70vh] w-full rounded-2xl border-0" />
                 ) : (
                   <div className="flex h-48 items-center justify-center text-sm text-muted-foreground">Предпросмотр недоступен</div>
                 )}

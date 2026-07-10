@@ -18,6 +18,7 @@ import {
   SquareStack,
   MoveRight,
   Pencil,
+  MoreVertical,
   UploadCloud,
   FileUp,
   FileText,
@@ -811,6 +812,9 @@ export function ProjectPage() {
                 : (item.public_url || item.preview_url || "")
               const isImageFile = item.type === "file" && item.file_kind === "image" && Boolean(imageSrc)
               const kindLabel = item.type === "file" ? getFileKindLabel(item.file_kind) : getItemKindLabel(item)
+              const openContextMenu = (x: number, y: number) => {
+                setContextMenu({ x, y, itemId: item.id, parentId: item.parent_id })
+              }
               return (
                 <button
                   key={item.id}
@@ -842,6 +846,17 @@ export function ProjectPage() {
                   className={`group relative flex min-h-[220px] flex-col overflow-hidden rounded-3xl border text-left transition-all hover:-translate-y-0.5 hover:shadow-lg ${isImageFile ? "border-transparent bg-zinc-950/90 text-white shadow-xl" : "bg-background p-4 hover:bg-muted/40"}`}
                   style={{ marginLeft: item.depth ? `${Math.min(item.depth, 3) * 8}px` : undefined }}
                 >
+                  <button
+                    type="button"
+                    className={`absolute right-3 top-3 z-20 inline-flex size-8 items-center justify-center rounded-full border shadow-sm transition-colors ${isImageFile ? "border-white/15 bg-background/70 text-foreground backdrop-blur-md hover:bg-background" : "border-border bg-background text-foreground hover:bg-muted"}`}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      const rect = (e.currentTarget as HTMLButtonElement).getBoundingClientRect()
+                      openContextMenu(rect.right - 4, rect.bottom + 4)
+                    }}
+                  >
+                    <MoreVertical className="size-4" />
+                  </button>
                   {isImageFile ? (
                     <>
                       <div className="absolute inset-0">
@@ -867,20 +882,16 @@ export function ProjectPage() {
                           }}
                         />
                       </div>
-                      <div className="relative z-10 flex flex-1 flex-col justify-between p-4">
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-white/15 text-white backdrop-blur-md">
-                            <Icon className="size-5" />
-                          </div>
-                          <span className="rounded-full border border-white/20 bg-white/10 px-2 py-0.5 text-[10px] uppercase tracking-wide text-white/90 backdrop-blur-md">
-                            {kindLabel}
-                          </span>
-                        </div>
-                        <div className="mt-auto space-y-2">
-                          <div className="truncate text-lg font-semibold">{item.title}</div>
-                          <div className="flex items-center justify-between gap-2 text-xs text-white/70">
-                            <span>{formatFileSize(item.size_bytes)}</span>
-                            <span>{formatDate(item.updated_at)}</span>
+                      <div className="relative z-10 mt-auto">
+                        <div className="rounded-t-3xl border-t border-white/10 bg-background/75 p-4 backdrop-blur-2xl">
+                          <div className="space-y-2">
+                            <div className="truncate text-lg font-semibold text-foreground">
+                              {item.title}
+                            </div>
+                            <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                              <span>{formatFileSize(item.size_bytes)}</span>
+                              <span>{formatDate(item.updated_at)}</span>
+                            </div>
                           </div>
                         </div>
                       </div>

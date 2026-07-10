@@ -89,6 +89,7 @@ export function TaskBoardPage() {
   const [taskSheetOpen, setTaskSheetOpen] = useState(false)
   const [taskSheetLoading, setTaskSheetLoading] = useState(false)
   const [widgetDialogOpen, setWidgetDialogOpen] = useState(false)
+  const [taskSheetInitialTab, setTaskSheetInitialTab] = useState<"chat" | "info" | "history">("chat")
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null)
   const [activeTaskData, setActiveTaskData] = useState<TaskCardData | null>(null)
   const [listUpdatedAt, setListUpdatedAt] = useState<string | null>(null)
@@ -325,12 +326,15 @@ export function TaskBoardPage() {
     setSelectedTaskId(taskId)
     setActiveTaskId(taskId)
     setWidgetDialogOpen(false)
+    setTaskSheetInitialTab("chat")
     setTaskSheetOpen(true)
   }, [])
 
   const handleOpenWidgetForTask = useCallback((taskId: string) => {
     setSelectedTaskId(taskId)
     setActiveTaskId(taskId)
+    setTaskSheetLoading(false)
+    setTaskSheetInitialTab("info")
     setTaskSheetOpen(true)
     setWidgetDialogOpen(true)
   }, [])
@@ -950,6 +954,7 @@ export function TaskBoardPage() {
           if (!open) setWidgetDialogOpen(false)
         }}
         taskData={taskSheetLoading ? null : activeTaskData}
+        initialTab={taskSheetInitialTab}
         columns={columns}
         onUpdateText={(taskId, text) => {
           if (!listId) return false

@@ -37,6 +37,23 @@ import { cn } from "@/lib/utils"
 
 type TaskTab = "chat" | "info" | "history"
 type WidgetType = "date" | "text" | "link" | "email" | "phone" | "fio" | "money" | "assignee"
+const RUBLE_COLOR_OPTIONS = [
+  "#111111",
+  "#ef4444",
+  "#f97316",
+  "#f59e0b",
+  "#eab308",
+  "#84cc16",
+  "#22c55e",
+  "#14b8a6",
+  "#06b6d4",
+  "#0ea5e9",
+  "#3b82f6",
+  "#6366f1",
+  "#8b5cf6",
+  "#d946ef",
+  "#ec4899",
+]
 
 interface TaskDetailSheetProps {
   open: boolean
@@ -60,6 +77,7 @@ interface TaskDetailSheetProps {
   onDeleteWidget: (widgetId: string) => Promise<boolean> | boolean
   widgetDialogOpen: boolean
   onWidgetDialogOpenChange: (open: boolean) => void
+  initialTab?: TaskTab
   teamMembers?: Array<{ id: string; first_name: string; last_name: string; img_url: string | null }>
 }
 
@@ -161,28 +179,6 @@ function WidgetBadge({ widget, onSave }: { widget: TaskWidget; onSave: (widgetId
     setCurrentValue(widget.value || "")
   }, [widget.value])
 
-  const icon = (() => {
-    switch (widget.type) {
-      case "date":
-        return Clock3
-      case "link":
-        return Link2
-      case "email":
-        return Mail
-      case "phone":
-        return Phone
-      case "fio":
-        return User
-      case "money":
-        return DollarSign
-      case "assignee":
-        return User
-      default:
-        return Pencil
-    }
-  })()
-
-  const Icon = icon
   const moneyColor =
     typeof widget.data?.color === "string"
       ? String(widget.data.color)
@@ -196,9 +192,10 @@ function WidgetBadge({ widget, onSave }: { widget: TaskWidget; onSave: (widgetId
         onClick={() => setOpen(true)}
         className="inline-flex items-center gap-1 rounded-full border bg-muted/50 px-2 py-1 text-xs"
       >
-        <Icon className="size-3.5" style={moneyColor ? { color: moneyColor } : undefined} />
-        {widget.title}
-        {currentValue ? <span className="opacity-80">• {currentValue}</span> : null}
+        {widget.type === "money" ? (
+          <span className="font-semibold" style={moneyColor ? { color: moneyColor } : undefined}>₽</span>
+        ) : null}
+        <span>{currentValue || "Виджет"}</span>
       </button>
       {open && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4">
@@ -239,6 +236,7 @@ export function TaskDetailSheet({
   onDeleteWidget,
   widgetDialogOpen,
   onWidgetDialogOpenChange,
+  initialTab = "chat",
   teamMembers = [],
 }: TaskDetailSheetProps) {
   const task = taskData?.task || null
@@ -280,6 +278,12 @@ export function TaskDetailSheet({
       onWidgetDialogOpenChange(false)
     }
   }, [open, onWidgetDialogOpenChange])
+
+  useEffect(() => {
+    if (open) {
+      setTab(initialTab)
+    }
+  }, [open, initialTab])
 
   useEffect(() => {
     if (!widgetDialogOpen) {
@@ -375,8 +379,15 @@ export function TaskDetailSheet({
       data,
     })
     if (ok) {
-      onWidgetDialogOpenChange(false)
+      handleWidgetDialogOpenChange(false)
     }
+  }
+
+  const handleWidgetDialogOpenChange = (nextOpen: boolean) => {
+    if (!nextOpen) {
+      setWidgetStep("select")
+    }
+    onWidgetDialogOpenChange(nextOpen)
   }
 
   if (!task) {
@@ -638,7 +649,7 @@ export function TaskDetailSheet({
                   <div className="flex flex-col gap-3">
                     <div className="flex items-center justify-between gap-2">
                       <h3 className="font-semibold">Виджеты</h3>
-                      <Button size="sm" variant="outline" onClick={() => onWidgetDialogOpenChange(true)}>
+                      <Button size="sm" variant="outline" onClick={() => handleWidgetDialogOpenChange(true)}>
                         <Plus className="mr-2 size-4" />
                         Добавить виджет
                       </Button>
@@ -688,13 +699,11 @@ export function TaskDetailSheet({
         </div>
       </SheetContent>
 
-      <Dialog open={widgetDialogOpen} onOpenChange={onWidgetDialogOpenChange}>
+      <Dialog open={widgetDialogOpen} onOpenChange={handleWidgetDialogOpenChange}>
         <DialogContent className="sm:max-w-[760px]">
           <DialogHeader>
             <DialogTitle>Добавить виджет</DialogTitle>
-            <DialogDescription>
-              Сначала выберите тип карточкой, потом заполните только нужные поля.
-            </DialogDescription>
+            <DialogDescription>Сначала выберите тип карточкой, потом заполните только нужные поля.</DialogDescription>
           </DialogHeader>
 
           {widgetStep === "select" ? (
@@ -733,8 +742,7 @@ export function TaskDetailSheet({
               <div className="rounded-2xl border bg-muted/30 p-4">
                 <div className="mb-3 flex items-center justify-between gap-2">
                   <div>
-                    <p className="text-sm text-muted-foreground">Тип виджета</p>
-                    <p className="text-lg font-semibold">{getDefaultWidgetTitle(widgetType)}</p>
+                    <p className="text-sm text-muted-foreground">Выбранный виджет</p>
                   </div>
                   <Button variant="ghost" size="sm" onClick={() => setWidgetStep("select")}>
                     Изменить тип
@@ -777,14 +785,30 @@ export function TaskDetailSheet({
                 )}
 
                 {widgetType === "money" && (
-                  <div className="grid gap-4 sm:grid-cols-[1fr_auto]">
+                  <div className="grid gap-4">
                     <div className="flex flex-col gap-2">
                       <label className="text-sm font-medium">Сумма</label>
                       <Input value={widgetValue} onChange={(e) => setWidgetValue(e.target.value)} placeholder="10000" />
                     </div>
                     <div className="flex flex-col gap-2">
                       <label className="text-sm font-medium">Цвет рубля</label>
-                      <Input type="color" value={widgetColor} onChange={(e) => setWidgetColor(e.target.value)} className="h-10 w-20 p-1" />
+                      <div className="grid grid-cols-5 gap-2 sm:grid-cols-8">
+                        {RUBLE_COLOR_OPTIONS.map((color) => (
+                          <button
+                            key={color}
+                            type="button"
+                            onClick={() => setWidgetColor(color)}
+                            className={cn(
+                              "flex size-9 items-center justify-center rounded-full border transition-transform hover:scale-105",
+                              widgetColor === color && "ring-2 ring-primary ring-offset-2"
+                            )}
+                            style={{ backgroundColor: color }}
+                            title={color}
+                          >
+                            {widgetColor === color ? <span className="size-2.5 rounded-full bg-white" /> : null}
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   </div>
                 )}
@@ -811,11 +835,11 @@ export function TaskDetailSheet({
           )}
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => onWidgetDialogOpenChange(false)}>Отмена</Button>
+            <Button variant="outline" onClick={() => handleWidgetDialogOpenChange(false)}>Отмена</Button>
             {widgetStep === "form" ? (
               <Button onClick={() => void handleWidgetSave()}>Сохранить</Button>
             ) : (
-              <Button variant="ghost" onClick={() => onWidgetDialogOpenChange(false)}>Закрыть</Button>
+              <Button variant="ghost" onClick={() => handleWidgetDialogOpenChange(false)}>Закрыть</Button>
             )}
           </DialogFooter>
         </DialogContent>

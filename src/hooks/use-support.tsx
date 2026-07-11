@@ -75,8 +75,9 @@ export function useSupport() {
 
   const getTicket = useCallback(async (ticketId?: string | null): Promise<SupportTicketPayload | null> => {
     try {
-      const query = ticketId ? `?ticket_id=${encodeURIComponent(ticketId)}` : ""
-      const { data } = await api.get(`/support/getTicket/${query}`)
+      const { data } = await api.get("/support/getTicket/", {
+        params: ticketId ? { ticket_id: ticketId } : undefined,
+      })
       if (data.status) {
         return data.data as SupportTicketPayload
       }

@@ -4,7 +4,6 @@ import {
   ArrowLeftRight,
   ChevronsUpDown,
   LogOut,
-  Settings,
   User,
 } from "lucide-react"
 
@@ -101,13 +100,9 @@ export function NavUser() {
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuGroup>
-              <DropdownMenuItem onClick={() => window.location.href = "https://id.exesfull.com/my/profile"}>
+              <DropdownMenuItem onClick={() => window.location.href = "https://id.exesfull.com/oauth/my/"}>
                 <User />
                 Профиль
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => window.location.href = "https://id.exesfull.com/my/settings/"}>
-                <Settings />
-                Настройки
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => window.location.href = buildSwitchAccountUrl()}>
                 <ArrowLeftRight />

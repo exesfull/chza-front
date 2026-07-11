@@ -685,6 +685,7 @@ export function TaskBoardPage() {
         <TableView
           columns={columns}
           tasks={tasks}
+          teamMembers={teamMembers}
           onOpenTask={handleOpenTask}
           onToggleTask={(taskId) => {
             const task = tasks.find((t) => t.id === taskId)

@@ -1,39 +1,125 @@
-import { Link, useLocation } from "react-router-dom"
-import { useEffect } from "react"
-import { Settings, HelpCircle, CheckCircle, Users } from "lucide-react"
+import { Fragment, useEffect, useRef, useState, type ReactNode } from "react"
+import { Link, Navigate, useLocation } from "react-router-dom"
+import {
+  BookOpen,
+  CheckCircle,
+  Clock3,
+  LoaderCircle,
+  MessageSquare,
+  Send,
+  Sparkles,
+  Tickets,
+  Users,
+} from "lucide-react"
 import { ThemeToggle } from "@/components/theme-toggle"
-import { cn } from "@/lib/utils"
 import { UserMenu } from "@/components/user-menu"
+import { cn } from "@/lib/utils"
+import { useUser } from "@/hooks/use-user"
+import { useSupport, type SupportMessage, type SupportTicket } from "@/hooks/use-support"
+import { Button } from "@/components/ui/button"
+import { Textarea } from "@/components/ui/textarea"
 
-const navItems = [
+const docs = [
   {
-    title: "Главная",
-    url: "/",
-    icon: CheckCircle,
-  },
-  {
-    title: "Мои команды",
-    url: "/teams",
+    title: "Команды и роли",
     icon: Users,
+    description: "Как создавать команды, приглашать участников и назначать роли.",
   },
   {
-    title: "Настройки",
-    url: "/settings",
-    icon: Settings,
+    title: "Проекты и задачи",
+    icon: BookOpen,
+    description: "Структура проектов, списков задач, досок, файлов и виджетов.",
   },
   {
-    title: "Помощь",
-    url: "/help",
-    icon: HelpCircle,
+    title: "Хранилище и файлы",
+    icon: Sparkles,
+    description: "Квоты, загрузки, превью, вложения и работа с медиа.",
   },
 ]
 
+function formatTime(value: string | null): string {
+  if (!value) return ""
+  const date = new Date(value.replace(" ", "T"))
+  if (Number.isNaN(date.getTime())) return ""
+  return date.toLocaleString("ru-RU", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })
+}
+
+function renderInlineMarkdown(text: string): ReactNode[] {
+  const nodes: ReactNode[] = []
+  let index = 0
+  let key = 0
+
+  const pushText = (value: string) => {
+    if (value) nodes.push(<Fragment key={key++}>{value}</Fragment>)
+  }
+
+  while (index < text.length) {
+    const rest = text.slice(index)
+    const linkMatch = rest.match(/^\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/)
+    if (linkMatch) {
+      nodes.push(
+        <a key={key++} href={linkMatch[2]} target="_blank" rel="noreferrer" className="text-primary underline underline-offset-2">
+          {linkMatch[1]}
+        </a>
+      )
+      index += linkMatch[0].length
+      continue
+    }
+    const boldMatch = rest.match(/^\*\*([^*]+)\*\*/)
+    if (boldMatch) {
+      nodes.push(<strong key={key++} className="font-semibold">{boldMatch[1]}</strong>)
+      index += boldMatch[0].length
+      continue
+    }
+    const next = rest.search(/[\[*`]/)
+    if (next === -1) {
+      pushText(rest)
+      break
+    }
+    pushText(rest.slice(0, next))
+    index += next
+  }
+
+  return nodes
+}
+
+function SupportBubble({ message }: { message: SupportMessage }) {
+  const isSystem = message.role === "system"
+  const isAdmin = message.role === "admin"
+  const isUser = message.role === "user"
+  return (
+    <div className={cn("flex", isUser ? "justify-end" : "justify-start")}>
+      <div
+        className={cn(
+          "max-w-[82%] rounded-3xl px-4 py-3 text-sm shadow-sm",
+          isUser
+            ? "bg-primary text-primary-foreground"
+            : isSystem
+              ? "border border-amber-500/30 bg-amber-500/10 text-foreground"
+              : isAdmin
+                ? "border bg-card text-card-foreground"
+                : "border bg-muted/30 text-card-foreground"
+        )}
+      >
+        {isSystem && <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-400">Системное сообщение</div>}
+        <div className="whitespace-pre-wrap leading-6">{renderInlineMarkdown(message.content)}</div>
+        <div className="mt-1 text-[11px] text-muted-foreground">{formatTime(message.created_at)}</div>
+      </div>
+    </div>
+  )
+}
+
 function TopNav() {
   const location = useLocation()
+  const items = [
+    { title: "Главная", url: "/", icon: CheckCircle },
+    { title: "Мои команды", url: "/teams", icon: Users },
+    { title: "Помощь", url: "/help", icon: BookOpen },
+  ]
 
   return (
     <nav className="flex flex-wrap items-center gap-1 border-b bg-muted/50 px-4 py-2 sm:px-6">
-      {navItems.map((item) => {
+      {items.map((item) => {
         const isActive = location.pathname === item.url
         return (
           <Link
@@ -41,9 +127,7 @@ function TopNav() {
             to={item.url}
             className={cn(
               "flex items-center gap-1.5 rounded-md px-2 py-1 text-xs sm:text-sm font-medium transition-colors",
-              isActive
-                ? "bg-background text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
+              isActive ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
             )}
           >
             <item.icon className="size-3.5 sm:size-4" />
@@ -56,19 +140,149 @@ function TopNav() {
 }
 
 export function HelpPage() {
+  const location = useLocation()
+  const { user } = useUser()
+  const { listTickets, getTicket, sendMessage, closeTicket } = useSupport()
+  const isAdminRoute = location.pathname.endsWith("/help/admin")
+  const isSuperAdmin = (user?.exesfull_id ?? 0) === 2
+
+  const [tickets, setTickets] = useState<SupportTicket[]>([])
+  const [loadingTickets, setLoadingTickets] = useState(true)
+  const [activeTicketId, setActiveTicketId] = useState<string | null>(null)
+  const [ticketMessages, setTicketMessages] = useState<SupportMessage[]>([])
+  const [ticketLoading, setTicketLoading] = useState(false)
+  const [ticketMeta, setTicketMeta] = useState<{ title: string; userName: string; userEmail: string; userAvatar: string | null; teams: Array<{ id: string; name: string; login: string; img_url: string | null }> }>({
+    title: "Поддержка",
+    userName: "",
+    userEmail: "",
+    userAvatar: null,
+    teams: [],
+  })
+  const [draft, setDraft] = useState("")
+  const [sending, setSending] = useState(false)
+  const chatEndRef = useRef<HTMLDivElement | null>(null)
+
+  const refreshTickets = async () => {
+    const items = await listTickets()
+    setTickets(items)
+    setLoadingTickets(false)
+    return items
+  }
+
+  const loadTicket = async (ticketId?: string | null) => {
+    setTicketLoading(true)
+    const payload = await getTicket(ticketId)
+    if (payload) {
+      setTicketMessages(payload.messages || [])
+      setTicketMeta({
+        title: payload.ticket?.subject || "Поддержка",
+        userName: payload.user ? `${payload.user.last_name} ${payload.user.first_name}`.trim() : "",
+        userEmail: payload.user?.email || "",
+        userAvatar: payload.user?.img_url || null,
+        teams: payload.teams || [],
+      })
+      if (payload.ticket?.id) {
+        setActiveTicketId(payload.ticket.id)
+      }
+    } else {
+      setTicketMessages([])
+      setTicketMeta({
+        title: "Поддержка",
+        userName: "",
+        userEmail: "",
+        userAvatar: null,
+        teams: [],
+      })
+    }
+    setTicketLoading(false)
+  }
+
   useEffect(() => {
     document.title = "Помощь"
   }, [])
 
+  useEffect(() => {
+    if (isAdminRoute && !isSuperAdmin) {
+      return
+    }
+    setLoadingTickets(true)
+    refreshTickets()
+  }, [isAdminRoute, isSuperAdmin])
+
+  useEffect(() => {
+    if (isAdminRoute && !isSuperAdmin) return
+    if (!isAdminRoute) {
+      void loadTicket(null)
+      return
+    }
+    if (!activeTicketId && tickets.length > 0) {
+      setActiveTicketId(tickets[0].id)
+    }
+  }, [isAdminRoute, isSuperAdmin, tickets])
+
+  useEffect(() => {
+    if (isAdminRoute && !isSuperAdmin) return
+    if (isAdminRoute) {
+      if (!activeTicketId && tickets.length === 0) return
+      if (activeTicketId) {
+        void loadTicket(activeTicketId)
+      }
+    } else {
+      void loadTicket(null)
+    }
+  }, [activeTicketId, isAdminRoute, isSuperAdmin])
+
+  useEffect(() => {
+    if (isAdminRoute && !isSuperAdmin) return
+    const timer = window.setInterval(async () => {
+      await refreshTickets()
+      await loadTicket(isAdminRoute ? activeTicketId : null)
+    }, 5000)
+    return () => window.clearInterval(timer)
+  }, [activeTicketId, isAdminRoute, isSuperAdmin])
+
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" })
+  }, [ticketMessages.length, sending])
+
+  const handleSend = async () => {
+    if (!draft.trim() || sending) return
+    setSending(true)
+    const result = await sendMessage(draft.trim(), isAdminRoute ? activeTicketId : null)
+    if (result) {
+      setTicketMessages(result.messages || [])
+      setDraft("")
+      if (result.ticket?.id) {
+        setActiveTicketId(result.ticket.id)
+      }
+      await refreshTickets()
+    }
+    setSending(false)
+  }
+
+  const handleCloseTicket = async () => {
+    if (!activeTicketId) return
+    const ok = await closeTicket(activeTicketId)
+    if (ok) {
+      await refreshTickets()
+      await loadTicket(activeTicketId)
+    }
+  }
+
+  if (isAdminRoute && !isSuperAdmin) {
+    return <Navigate to="/help" replace />
+  }
+
+  const activeTicket = tickets.find((ticket) => ticket.id === activeTicketId) || null
+
   return (
-    <div className="flex min-h-svh flex-col">
-      {/* Header */}
+    <div className="flex min-h-svh flex-col bg-gradient-to-br from-background via-background to-muted/20">
       <header className="flex items-center justify-between border-b px-4 py-3 sm:px-6 sm:py-4">
         <div className="flex items-center gap-2">
           <div className="flex size-8 items-center justify-center rounded-md bg-primary text-primary-foreground">
             <CheckCircle className="size-5" />
           </div>
-          <span className="text-lg font-bold hidden sm:inline">Чисто Задачи</span>
+          <span className="hidden text-lg font-bold sm:inline">Чисто Задачи</span>
         </div>
         <div className="flex items-center gap-2">
           <ThemeToggle />
@@ -76,28 +290,168 @@ export function HelpPage() {
         </div>
       </header>
 
-      {/* Top navigation */}
       <TopNav />
 
-      {/* Page content */}
       <main className="flex flex-1 flex-col gap-6 p-4 md:p-6">
-        <div>
-          <h1 className="text-2xl font-bold">Помощь</h1>
-          <p className="text-sm text-muted-foreground">Документация и поддержка</p>
+        <div className="flex flex-col gap-3">
+          <div>
+            <h1 className="text-3xl font-bold">Помощь</h1>
+            <p className="mt-1 text-sm text-muted-foreground">Документация платформы и техподдержка в одном месте.</p>
+          </div>
+
+          <div className="grid gap-4 lg:grid-cols-3">
+            {docs.map((doc) => {
+              const Icon = doc.icon
+              return (
+                <div key={doc.title} className="rounded-3xl border bg-card p-5 shadow-sm">
+                  <div className="flex items-start gap-3">
+                    <div className="flex size-11 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                      <Icon className="size-5" />
+                    </div>
+                    <div className="min-w-0">
+                      <h3 className="font-semibold">{doc.title}</h3>
+                      <p className="mt-1 text-sm leading-6 text-muted-foreground">{doc.description}</p>
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
         </div>
-        <div className="flex flex-col gap-4">
-          <div className="rounded-lg border p-4">
-            <h3 className="font-medium">Документация</h3>
-            <p className="text-sm text-muted-foreground">Руководства и примеры использования</p>
-          </div>
-          <div className="rounded-lg border p-4">
-            <h3 className="font-medium">FAQ</h3>
-            <p className="text-sm text-muted-foreground">Часто задаваемые вопросы</p>
-          </div>
-          <div className="rounded-lg border p-4">
-            <h3 className="font-medium">Поддержка</h3>
-            <p className="text-sm text-muted-foreground">Связаться с нами</p>
-          </div>
+
+        <div className={cn("grid gap-6", isAdminRoute ? "xl:grid-cols-[360px_1fr]" : "xl:grid-cols-[1fr_1.1fr]")}>
+          {isAdminRoute && (
+            <section className="rounded-3xl border bg-card shadow-sm">
+              <div className="flex items-center justify-between border-b px-4 py-3">
+                <div>
+                  <div className="text-sm font-semibold">Тикеты поддержки</div>
+                  <div className="text-xs text-muted-foreground">{tickets.length} открытых/закрытых диалогов</div>
+                </div>
+                <Tickets className="size-4 text-muted-foreground" />
+              </div>
+              <div className="h-[620px] overflow-y-auto p-2">
+                {loadingTickets ? (
+                  <div className="space-y-2 p-2">
+                    {Array.from({ length: 5 }).map((_, index) => (
+                      <div key={index} className="h-20 animate-pulse rounded-2xl border bg-muted/30" />
+                    ))}
+                  </div>
+                ) : tickets.length > 0 ? (
+                  tickets.map((ticket) => (
+                    <button
+                      key={ticket.id}
+                      type="button"
+                      onClick={() => setActiveTicketId(ticket.id)}
+                      className={cn(
+                        "mb-2 w-full rounded-2xl border p-3 text-left transition-colors hover:bg-muted/50",
+                        activeTicketId === ticket.id && "border-primary bg-primary/5"
+                      )}
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className="flex size-10 shrink-0 items-center justify-center rounded-2xl bg-muted">
+                          <MessageSquare className="size-4 text-muted-foreground" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="truncate font-medium">
+                              {ticket.user?.last_name} {ticket.user?.first_name}
+                            </div>
+                            <span className={cn(
+                              "rounded-full px-2 py-0.5 text-[11px] font-medium",
+                              ticket.status === "closed" ? "bg-muted text-muted-foreground" : "bg-emerald-500/10 text-emerald-600"
+                            )}>
+                              {ticket.status === "closed" ? "Закрыт" : "Открыт"}
+                            </span>
+                          </div>
+                          <div className="mt-1 line-clamp-2 text-xs text-muted-foreground">
+                            {ticket.last_message_preview || "Нет сообщений"}
+                          </div>
+                          <div className="mt-2 flex items-center justify-between text-[11px] text-muted-foreground">
+                            <span>{ticket.subject || "Поддержка"}</span>
+                            <span className="flex items-center gap-1"><Clock3 className="size-3" />{formatTime(ticket.updated_at)}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </button>
+                  ))
+                ) : (
+                  <div className="flex h-full items-center justify-center p-8 text-center text-sm text-muted-foreground">
+                    Пока нет тикетов.
+                  </div>
+                )}
+              </div>
+            </section>
+          )}
+
+          <section className="rounded-3xl border bg-card shadow-sm">
+            <div className="flex items-center justify-between gap-3 border-b px-4 py-3">
+              <div className="min-w-0">
+                <div className="text-sm font-semibold">
+                  {activeTicket?.subject || ticketMeta.title || "Техподдержка"}
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  {isAdminRoute
+                    ? ticketMeta.userName
+                      ? `${ticketMeta.userName}${ticketMeta.userEmail ? ` • ${ticketMeta.userEmail}` : ""}`
+                      : "Выберите тикет слева"
+                    : "Напишите сообщение, и тикет создастся автоматически"}
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                {isAdminRoute && activeTicket?.status !== "closed" && activeTicketId && (
+                  <Button variant="outline" size="sm" onClick={handleCloseTicket}>
+                    Завершить тикет
+                  </Button>
+                )}
+                {ticketLoading && <LoaderCircle className="size-4 animate-spin text-muted-foreground" />}
+              </div>
+            </div>
+
+            {isAdminRoute && ticketMeta.teams.length > 0 && (
+              <div className="border-b px-4 py-3">
+                <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Команды пользователя</div>
+                <div className="flex flex-wrap gap-2">
+                  {ticketMeta.teams.map((team) => (
+                    <div key={team.id} className="inline-flex items-center gap-2 rounded-full border bg-muted/40 px-3 py-1 text-xs">
+                      <span className="flex size-4 items-center justify-center overflow-hidden rounded-full bg-background">
+                        {team.img_url ? <img src={team.img_url} alt="" className="size-full object-cover" /> : <Users className="size-3" />}
+                      </span>
+                      <span>{team.name}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="h-[540px] overflow-y-auto px-4 py-4">
+              <div className="flex min-h-full flex-col gap-3">
+                {ticketMessages.length > 0 ? (
+                  ticketMessages.map((message) => <SupportBubble key={message.id} message={message} />)
+                ) : (
+                  <div className="flex flex-1 items-center justify-center rounded-3xl border border-dashed p-8 text-center text-sm text-muted-foreground">
+                    {isAdminRoute ? "Выберите тикет слева, чтобы увидеть переписку." : "Здесь появится чат поддержки после первого сообщения."}
+                  </div>
+                )}
+                <div ref={chatEndRef} />
+              </div>
+            </div>
+
+            <div className="border-t p-4">
+              <div className="flex items-end gap-2">
+                <Textarea
+                  value={draft}
+                  onChange={(e) => setDraft(e.target.value)}
+                  placeholder={isAdminRoute ? "Ответ техподдержки..." : "Напишите сообщение в техподдержку..."}
+                  rows={3}
+                  className="min-h-[92px] resize-none rounded-2xl"
+                />
+                <Button onClick={() => void handleSend()} disabled={!draft.trim() || sending} className="h-11 shrink-0 gap-2">
+                  {sending ? <LoaderCircle className="size-4 animate-spin" /> : <Send className="size-4" />}
+                  Отправить
+                </Button>
+              </div>
+            </div>
+          </section>
         </div>
       </main>
 

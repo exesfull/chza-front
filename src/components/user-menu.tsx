@@ -1,4 +1,4 @@
-import { ArrowLeftRight, ChevronsUpDown, LogOut, Settings, User } from "lucide-react"
+import { ArrowLeftRight, ChevronsUpDown, LogOut, User } from "lucide-react"
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import {
@@ -54,13 +54,9 @@ export function UserMenu() {
           </div>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={() => window.location.href = "https://id.exesfull.com/my/profile"}>
+        <DropdownMenuItem onClick={() => window.location.href = "https://id.exesfull.com/oauth/my/"}>
           <User />
           Профиль
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => window.location.href = "https://id.exesfull.com/my/settings/"}>
-          <Settings />
-          Настройки
         </DropdownMenuItem>
         <DropdownMenuItem onClick={() => window.location.href = buildSwitchAccountUrl()}>
           <ArrowLeftRight />

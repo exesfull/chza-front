@@ -169,6 +169,14 @@ const routes: RouteObject[] = [
     ),
   },
   {
+    path: 'help/admin',
+    element: (
+      <ProtectedRoute>
+        <HelpPage />
+      </ProtectedRoute>
+    ),
+  },
+  {
     path: '*',
     element: <NotFoundPage />,
   },

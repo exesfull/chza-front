@@ -8,6 +8,7 @@ interface UserProfile {
   patronymic: string
   email: string
   img_url: string
+  exesfull_id?: number
   is_active: boolean
 }
 

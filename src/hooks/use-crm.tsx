@@ -119,6 +119,16 @@ export interface CrmFinance {
   updated_at: string | null
 }
 
+export interface CrmLeadHistory {
+  id: string
+  crm_id: string
+  lead_id: string
+  reason: string | null
+  snapshot: unknown
+  created_at: string | null
+  updated_at: string | null
+}
+
 export interface CrmDetail {
   id: string
   team_id: string
@@ -293,6 +303,12 @@ export function useCrm(teamLogin?: string) {
     return data.status === true
   }, [teamLogin])
 
+  const getLeadHistory = useCallback(async (crmId: string, leadId: string) => {
+    if (!teamLogin) return []
+    const { data } = await api.get(`/main/crm/getLeadHistory/?team_login=${teamLogin}&crm_id=${crmId}&lead_id=${leadId}`)
+    return data.status && Array.isArray(data.data) ? (data.data as CrmLeadHistory[]) : []
+  }, [teamLogin])
+
   const createContact = useCallback(async (crmId: string, payload: Record<string, unknown>) => {
     if (!teamLogin) return null
     const { data } = await api.post(
@@ -428,6 +444,7 @@ export function useCrm(teamLogin?: string) {
     updateLead,
     moveLead,
     deleteLead,
+    getLeadHistory,
     createContact,
     updateContact,
     deleteContact,
@@ -452,6 +469,7 @@ export function useCrm(teamLogin?: string) {
     updateLead,
     moveLead,
     deleteLead,
+    getLeadHistory,
     createContact,
     updateContact,
     deleteContact,

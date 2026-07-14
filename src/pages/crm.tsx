@@ -5,13 +5,16 @@ import {
   BarChart3,
   Building2,
   ChevronRight,
+  Copy,
   FileText,
+  History,
   Layers3,
   Loader2,
   Package,
   Plus,
   Search,
   Sparkles,
+  MessageSquare,
   Users,
   Wallet,
   X,
@@ -27,6 +30,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge"
 
 type CrmTab = "leads" | "contacts" | "products" | "documents" | "finances" | "stats"
+type LeadSheetTab = "chat" | "info" | "history"
 const EMPTY_VALUE = "__none__"
 
 const TABS: Array<{ key: CrmTab; title: string; icon: ComponentType<{ className?: string }> }> = [
@@ -88,7 +92,9 @@ export function CrmPage() {
     createLead,
     updateLead,
     deleteLead,
+    getLeadHistory,
     createContact,
+    updateContact,
     lookupOrganization,
     createProduct,
     createCategory,
@@ -100,6 +106,9 @@ export function CrmPage() {
   const [search, setSearch] = useState("")
   const [selectedCrm, setSelectedCrm] = useState<CrmDetail | null>(null)
   const [selectedLead, setSelectedLead] = useState<CrmLead | null>(null)
+  const [selectedLeadTab, setSelectedLeadTab] = useState<LeadSheetTab>("info")
+  const [selectedLeadHistory, setSelectedLeadHistory] = useState<Array<{ id: string; reason: string | null; snapshot: unknown; created_at: string | null }>>([])
+  const [contactSearch, setContactSearch] = useState("")
 
   const [createCrmOpen, setCreateCrmOpen] = useState(false)
   const [createLeadOpen, setCreateLeadOpen] = useState(false)
@@ -112,7 +121,7 @@ export function CrmPage() {
   const [newCrmName, setNewCrmName] = useState("")
   const [newCrmDescription, setNewCrmDescription] = useState("")
 
-  const [leadForm, setLeadForm] = useState({ title: "", description: "", stage_id: "", responsible_user_id: "", amount: "" })
+  const [leadForm, setLeadForm] = useState({ title: "", description: "", stage_id: "", responsible_user_id: "" })
   const [leadContacts, setLeadContacts] = useState<string[]>([])
   const [leadProducts, setLeadProducts] = useState<Array<{ product_id: string; quantity: number; price: string; discount_type: string; discount_value: string }>>([])
 
@@ -132,6 +141,24 @@ export function CrmPage() {
     ogrn: "",
   })
   const [contactLookupLoading, setContactLookupLoading] = useState(false)
+  const [contactEditOpen, setContactEditOpen] = useState(false)
+  const [contactEditLoading, setContactEditLoading] = useState(false)
+  const [contactEditForm, setContactEditForm] = useState({
+    id: "",
+    type: "person",
+    first_name: "",
+    last_name: "",
+    patronymic: "",
+    email: "",
+    phone: "",
+    address: "",
+    position: "",
+    company_name_full: "",
+    company_name_short: "",
+    inn: "",
+    kpp: "",
+    ogrn: "",
+  })
 
   const [productForm, setProductForm] = useState({ name: "", price: "", cost_price: "", description: "" })
   const [categoryName, setCategoryName] = useState("")
@@ -200,7 +227,52 @@ export function CrmPage() {
     return sums
   }, [stages, leads])
 
+  const filteredContacts = useMemo(() => {
+    const q = contactSearch.trim().toLowerCase()
+    if (!q) return contacts
+    return contacts.filter((contact) => {
+      const fields = [
+        contactDisplayName(contact),
+        contact.email,
+        contact.phone,
+        contact.position,
+        contact.inn,
+        contact.kpp,
+        contact.ogrn,
+        contact.address,
+      ]
+      return fields.filter(Boolean).some((value) => String(value).toLowerCase().includes(q))
+    })
+  }, [contacts, contactSearch])
+
   const activeCrm = selectedCrm || null
+  const selectedLeadDocuments = useMemo(
+    () => documents.filter((document) => document.lead_id === selectedLead?.id),
+    [documents, selectedLead?.id]
+  )
+  const selectedLeadFinances = useMemo(
+    () => finances.filter((finance) => finance.lead_id === selectedLead?.id),
+    [finances, selectedLead?.id]
+  )
+
+  useEffect(() => {
+    if (!selectedLead || !crmId) {
+      setSelectedLeadHistory([])
+      setSelectedLeadTab("info")
+      return
+    }
+
+    let cancelled = false
+    void getLeadHistory(crmId, selectedLead.id).then((items) => {
+      if (!cancelled) {
+        setSelectedLeadHistory(items as Array<{ id: string; reason: string | null; snapshot: unknown; created_at: string | null }>)
+      }
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [crmId, getLeadHistory, selectedLead])
 
   const refreshDetail = async () => {
     if (!crmId) return
@@ -228,13 +300,12 @@ export function CrmPage() {
       description: leadForm.description.trim(),
       stage_id: leadForm.stage_id || undefined,
       responsible_user_id: leadForm.responsible_user_id || undefined,
-      amount: leadForm.amount || undefined,
       contact_ids: JSON.stringify(leadContacts),
       product_items: JSON.stringify(leadProducts),
     })
     if (lead) {
       setCreateLeadOpen(false)
-      setLeadForm({ title: "", description: "", stage_id: stages[0]?.id || "", responsible_user_id: "", amount: "" })
+      setLeadForm({ title: "", description: "", stage_id: stages[0]?.id || "", responsible_user_id: "" })
       setLeadContacts([])
       setLeadProducts([])
       await refreshDetail()
@@ -259,6 +330,47 @@ export function CrmPage() {
       }))
     }
     setContactLookupLoading(false)
+  }
+
+  const copyText = async (value: string | null | undefined) => {
+    const text = (value || "").toString()
+    if (!text) return
+    await navigator.clipboard.writeText(text)
+  }
+
+  const openContactEditor = (contact: (typeof contacts)[number]) => {
+    setContactEditForm({
+      id: contact.id,
+      type: contact.type,
+      first_name: contact.first_name || "",
+      last_name: contact.last_name || "",
+      patronymic: contact.patronymic || "",
+      email: contact.email || "",
+      phone: contact.phone || "",
+      address: contact.address || "",
+      position: contact.position || "",
+      company_name_full: contact.company_name_full || "",
+      company_name_short: contact.company_name_short || "",
+      inn: contact.inn || "",
+      kpp: contact.kpp || "",
+      ogrn: contact.ogrn || "",
+    })
+    setContactEditOpen(true)
+  }
+
+  const handleSaveContactEdit = async () => {
+    if (!crmId || !contactEditForm.id) return
+    setContactEditLoading(true)
+    const updated = await updateContact(crmId, contactEditForm.id, contactEditForm)
+    setContactEditLoading(false)
+    if (updated) {
+      setContactEditOpen(false)
+      await refreshDetail()
+      if (selectedLead) {
+        const refreshedLead = await getCrm(crmId).then((detail) => detail?.leads.find((lead) => lead.id === selectedLead.id) || null)
+        if (refreshedLead) setSelectedLead(refreshedLead)
+      }
+    }
   }
 
   const handleCreateContact = async () => {
@@ -538,20 +650,34 @@ export function CrmPage() {
               <div className="font-semibold">Контакты</div>
               <div className="text-sm text-muted-foreground">Физические и юридические лица внутри CRM</div>
             </div>
-            <Button onClick={() => setCreateContactOpen(true)}><Plus className="mr-2 size-4" />Добавить контакт</Button>
+            <div className="flex items-center gap-2">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  placeholder="Поиск контактов"
+                  className="w-64 pl-9"
+                  value={contactSearch}
+                  onChange={(e) => setContactSearch(e.target.value)}
+                />
+              </div>
+              <Button onClick={() => setCreateContactOpen(true)}><Plus className="mr-2 size-4" />Добавить контакт</Button>
+            </div>
           </div>
           <div className="grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-3">
-            {contacts.map((contact) => (
-              <div key={contact.id} className="rounded-2xl border p-4">
+            {filteredContacts.map((contact) => (
+              <button
+                key={contact.id}
+                type="button"
+                onClick={() => openContactEditor(contact)}
+                className="rounded-2xl border p-4 text-left transition-colors hover:bg-muted/40"
+              >
                 <div className="font-semibold">
-                  {contact.type === "company"
-                    ? contact.company_name_short || contact.company_name_full || "Организация"
-                    : `${contact.last_name || ""} ${contact.first_name || ""}`.trim() || "Контакт"}
+                  {contactDisplayName(contact)}
                 </div>
                 <div className="mt-1 text-sm text-muted-foreground">
                   {contact.type === "company" ? contact.company_name_full : [contact.position, contact.email, contact.phone].filter(Boolean).join(" • ")}
                 </div>
-              </div>
+              </button>
             ))}
           </div>
         </div>
@@ -663,182 +789,327 @@ export function CrmPage() {
           {selectedLead && activeCrm && (
             <div className="flex h-full flex-col">
               <SheetHeader className="border-b px-6 py-4">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <SheetTitle>{selectedLead.title}</SheetTitle>
-                    <SheetDescription>{selectedLead.stage_name || "Без стадии"}</SheetDescription>
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <SheetTitle className="truncate">{selectedLead.title}</SheetTitle>
+                    <SheetDescription className="mt-1 flex flex-wrap items-center gap-2">
+                      <span>{selectedLead.stage_name || "Без стадии"}</span>
+                      <Badge variant="secondary">{formatMoney(selectedLead.amount ?? selectedLead.products_total)}</Badge>
+                    </SheetDescription>
                   </div>
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      { key: "chat" as const, label: "Чат", icon: MessageSquare },
+                      { key: "info" as const, label: "Инфо", icon: Building2 },
+                      { key: "history" as const, label: "История", icon: History },
+                    ].map((tab) => {
+                      const Icon = tab.icon
+                      return (
+                        <Button key={tab.key} variant={selectedLeadTab === tab.key ? "default" : "outline"} size="sm" onClick={() => setSelectedLeadTab(tab.key)}>
+                          <Icon className="mr-2 size-4" />
+                          {tab.label}
+                        </Button>
+                      )
+                    })}
+                  </div>
+                </div>
+              </SheetHeader>
+              <div className="flex-1 overflow-y-auto p-6">
+                {selectedLeadTab === "chat" && (
+                  <div className="rounded-2xl border bg-muted/20 p-6 text-sm text-muted-foreground">
+                    Чат лида скоро будет подключён. Сейчас доступны данные лида и история изменений.
+                  </div>
+                )}
+
+                {selectedLeadTab === "history" && (
+                  <div className="space-y-3">
+                    {selectedLeadHistory.length === 0 ? (
+                      <div className="rounded-2xl border border-dashed p-6 text-center text-sm text-muted-foreground">
+                        История изменений пока пуста
+                      </div>
+                    ) : (
+                      selectedLeadHistory.map((entry) => (
+                        <div key={entry.id} className="rounded-2xl border p-4">
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="font-medium">{entry.reason || "Изменение лида"}</div>
+                            <div className="text-xs text-muted-foreground">{entry.created_at || "—"}</div>
+                          </div>
+                          <div className="mt-2 text-sm text-muted-foreground">Изменения сохранены автоматически.</div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
+
+                {selectedLeadTab === "info" && (
+                  <div className="space-y-6">
+                    <div className="grid gap-4">
+                      <div className="flex flex-col gap-2">
+                        <label className="text-sm font-medium">Название</label>
+                        <Input value={selectedLead.title} onChange={(e) => setSelectedLead({ ...selectedLead, title: e.target.value })} />
+                      </div>
+                      <div className="flex flex-col gap-2">
+                        <label className="text-sm font-medium">Описание</label>
+                        <Textarea value={selectedLead.description || ""} onChange={(e) => setSelectedLead({ ...selectedLead, description: e.target.value })} rows={4} />
+                      </div>
+                      <div className="grid gap-4 md:grid-cols-2">
+                        <div className="flex flex-col gap-2">
+                          <label className="text-sm font-medium">Стадия</label>
+                          <Select value={selectedLead.stage_id || EMPTY_VALUE} onValueChange={(value) => setSelectedLead({ ...selectedLead, stage_id: value === EMPTY_VALUE ? null : value })}>
+                            <SelectTrigger><SelectValue placeholder="Выберите стадию" /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value={EMPTY_VALUE}>Без стадии</SelectItem>
+                              {stages.map((stage) => <SelectItem key={stage.id} value={stage.id}>{stage.name}</SelectItem>)}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="flex flex-col gap-2">
+                          <label className="text-sm font-medium">Ответственный</label>
+                          <Select value={selectedLead.responsible_user_id || EMPTY_VALUE} onValueChange={(value) => setSelectedLead({ ...selectedLead, responsible_user_id: value === EMPTY_VALUE ? null : value })}>
+                            <SelectTrigger><SelectValue placeholder="Выберите пользователя" /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value={EMPTY_VALUE}>Без ответственного</SelectItem>
+                              {teamMembers.map((member) => <SelectItem key={member.id} value={member.id}>{member.last_name} {member.first_name}</SelectItem>)}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Badge variant="secondary">Сумма: {formatMoney(selectedLead.amount ?? selectedLead.products_total)}</Badge>
+                        <span className="text-sm text-muted-foreground">Цена считается из товаров лида</span>
+                      </div>
+                    </div>
+
+                    <div className="rounded-2xl border p-4">
+                      <div className="mb-3 flex items-center justify-between gap-2">
+                        <div className="font-semibold">Контакты лида</div>
+                        <Button size="sm" variant="outline" onClick={() => setCreateContactOpen(true)}>Создать контакт</Button>
+                      </div>
+                      <div className="space-y-2">
+                        {selectedLead.contacts.map((contact) => (
+                          <div key={contact.id} className="flex items-center justify-between rounded-xl border p-3 text-sm">
+                            <button type="button" className="text-left font-medium hover:underline" onClick={() => openContactEditor(contact)}>
+                              {contactDisplayName(contact)}
+                            </button>
+                            <Button size="icon" variant="ghost" onClick={() => setSelectedLead({ ...selectedLead, contacts: selectedLead.contacts.filter((item) => item.id !== contact.id) })}>
+                              <X className="size-4" />
+                            </Button>
+                          </div>
+                        ))}
+                        <div className="relative">
+                          <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                          <Input placeholder="Поиск контактов..." className="pl-9" value={contactSearch} onChange={(e) => setContactSearch(e.target.value)} />
+                        </div>
+                        <Select value="" onValueChange={(value) => {
+                          const contact = filteredContacts.find((item) => item.id === value)
+                          if (!contact) return
+                          if (!selectedLead.contacts.some((item) => item.id === contact.id)) {
+                            setSelectedLead({ ...selectedLead, contacts: [...selectedLead.contacts, contact] })
+                          }
+                        }}>
+                          <SelectTrigger><SelectValue placeholder="Добавить контакт из CRM" /></SelectTrigger>
+                          <SelectContent>
+                            {filteredContacts.map((contact) => <SelectItem key={contact.id} value={contact.id}>{contactDisplayName(contact)}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+
+                    <div className="rounded-2xl border p-4">
+                      <div className="mb-3 flex items-center justify-between gap-2">
+                        <div className="font-semibold">Товары лида</div>
+                        <Button size="sm" variant="outline" onClick={() => setCreateProductOpen(true)}>Создать товар</Button>
+                      </div>
+                      <div className="space-y-2">
+                        {selectedLead.products.map((item) => (
+                          <div key={item.id} className="rounded-xl border p-3 text-sm">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="font-medium">{item.product_name || "Товар"}</span>
+                              <Button size="icon" variant="ghost" onClick={() => setSelectedLead({ ...selectedLead, products: selectedLead.products.filter((product) => product.id !== item.id) })}>
+                                <X className="size-4" />
+                              </Button>
+                            </div>
+                            <div className="mt-2 grid grid-cols-3 gap-2">
+                              <Input value={item.quantity} onChange={(e) => setSelectedLead({
+                                ...selectedLead,
+                                products: selectedLead.products.map((product) => product.id === item.id ? { ...product, quantity: Number(e.target.value || 1) } : product),
+                              })} />
+                              <Input value={item.price ?? ""} onChange={(e) => setSelectedLead({
+                                ...selectedLead,
+                                products: selectedLead.products.map((product) => product.id === item.id ? { ...product, price: Number(e.target.value || 0) } : product),
+                              })} />
+                              <Input value={item.discount_value ?? ""} onChange={(e) => setSelectedLead({
+                                ...selectedLead,
+                                products: selectedLead.products.map((product) => product.id === item.id ? { ...product, discount_value: Number(e.target.value || 0) } : product),
+                              })} />
+                            </div>
+                          </div>
+                        ))}
+                        <Select value="" onValueChange={(value) => {
+                          const product = products.find((item) => item.id === value)
+                          if (!product) return
+                          if (!selectedLead.products.some((item) => item.product_id === product.id)) {
+                            setSelectedLead({
+                              ...selectedLead,
+                              products: [...selectedLead.products, { id: `${product.id}-${Date.now()}`, product_id: product.id, product_name: product.name, quantity: 1, price: product.price, discount_type: null, discount_value: null }],
+                            })
+                          }
+                        }}>
+                          <SelectTrigger><SelectValue placeholder="Добавить товар из CRM" /></SelectTrigger>
+                          <SelectContent>
+                            {products.map((product) => <SelectItem key={product.id} value={product.id}>{product.name}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+
+                    <div className="rounded-2xl border p-4">
+                      <div className="mb-3 flex items-center justify-between gap-2">
+                        <div className="font-semibold">Документы лида</div>
+                        <Button size="sm" variant="outline" onClick={() => setCreateDocumentOpen(true)}>Загрузить файлы</Button>
+                      </div>
+                      <div className="space-y-2">
+                        {selectedLeadDocuments.length === 0 ? (
+                          <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">Документов пока нет</div>
+                        ) : selectedLeadDocuments.map((document) => (
+                          <div key={document.id} className="rounded-xl border p-3 text-sm">
+                            <div className="font-medium">{document.file_name || document.title}</div>
+                            <div className="text-xs text-muted-foreground">{document.mime_type || "Файл"} • {formatFileSize(document.size_bytes)}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="rounded-2xl border p-4">
+                      <div className="mb-3 flex items-center justify-between gap-2">
+                        <div className="font-semibold">Финоперации лида</div>
+                        <Button size="sm" variant="outline" onClick={() => setCreateFinanceOpen(true)}>Добавить операцию</Button>
+                      </div>
+                      <div className="space-y-2">
+                        {selectedLeadFinances.length === 0 ? (
+                          <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">Финопераций пока нет</div>
+                        ) : selectedLeadFinances.map((finance) => (
+                          <div key={finance.id} className="rounded-xl border p-3 text-sm">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="font-medium">{finance.category || "Без категории"}</span>
+                              <span>{formatMoney(finance.amount)}</span>
+                            </div>
+                            <div className="mt-1 text-xs text-muted-foreground">{finance.from_contact_name || "—"} → {finance.to_contact_name || "—"}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+              <div className="border-t p-4">
+                <div className="flex items-center justify-between gap-2">
                   <Button variant="destructive" onClick={async () => {
                     await deleteLead(activeCrm.id, selectedLead.id)
                     setSelectedLead(null)
                     await refreshDetail()
                   }}>Удалить</Button>
-                </div>
-              </SheetHeader>
-              <div className="flex-1 overflow-y-auto p-6">
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="flex flex-col gap-2 md:col-span-2">
-                    <label className="text-sm font-medium">Название</label>
-                    <Input value={selectedLead.title} onChange={(e) => setSelectedLead({ ...selectedLead, title: e.target.value })} />
+                  <div className="flex gap-2">
+                    <Button variant="outline" onClick={() => setSelectedLead(null)}>Закрыть</Button>
+                    <Button onClick={async () => {
+                      if (!crmId || !selectedLead) return
+                      await updateLead(crmId, selectedLead.id, {
+                        title: selectedLead.title,
+                        description: selectedLead.description,
+                        stage_id: selectedLead.stage_id,
+                        responsible_user_id: selectedLead.responsible_user_id,
+                        amount: selectedLead.amount,
+                        discount_type: selectedLead.discount_type,
+                        discount_value: selectedLead.discount_value,
+                        contact_ids: JSON.stringify(selectedLead.contacts.map((contact) => contact.id)),
+                        product_items: JSON.stringify(selectedLead.products.map((item) => ({
+                          product_id: item.product_id,
+                          quantity: item.quantity,
+                          price: item.price,
+                          discount_type: item.discount_type,
+                          discount_value: item.discount_value,
+                        }))),
+                      })
+                      await refreshDetail()
+                    }}>
+                      Сохранить
+                    </Button>
                   </div>
-                  <div className="flex flex-col gap-2 md:col-span-2">
-                    <label className="text-sm font-medium">Описание</label>
-                    <Textarea value={selectedLead.description || ""} onChange={(e) => setSelectedLead({ ...selectedLead, description: e.target.value })} rows={4} />
-                  </div>
-                  <div className="flex flex-col gap-2">
-                    <label className="text-sm font-medium">Стадия</label>
-                    <Select value={selectedLead.stage_id || ""} onValueChange={(value) => setSelectedLead({ ...selectedLead, stage_id: value })}>
-                      <SelectTrigger><SelectValue placeholder="Выберите стадию" /></SelectTrigger>
-                      <SelectContent>
-                        {stages.map((stage) => (
-                          <SelectItem key={stage.id} value={stage.id}>{stage.name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="flex flex-col gap-2">
-                    <label className="text-sm font-medium">Ответственный</label>
-                    <Select value={selectedLead.responsible_user_id || EMPTY_VALUE} onValueChange={(value) => setSelectedLead({ ...selectedLead, responsible_user_id: value === EMPTY_VALUE ? null : value })}>
-                      <SelectTrigger><SelectValue placeholder="Выберите пользователя" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value={EMPTY_VALUE}>Без ответственного</SelectItem>
-                        {teamMembers.map((member) => (
-                          <SelectItem key={member.id} value={member.id}>
-                            {member.last_name} {member.first_name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="flex flex-col gap-2">
-                    <label className="text-sm font-medium">Сумма</label>
-                    <Input value={selectedLead.amount ?? ""} onChange={(e) => setSelectedLead({ ...selectedLead, amount: Number(e.target.value || 0) })} />
-                  </div>
-                  <div className="flex flex-col gap-2">
-                    <label className="text-sm font-medium">Скидка</label>
-                    <div className="flex gap-2">
-                      <Input className="w-32" placeholder="Тип" value={selectedLead.discount_type || ""} onChange={(e) => setSelectedLead({ ...selectedLead, discount_type: e.target.value })} />
-                      <Input placeholder="Значение" value={selectedLead.discount_value ?? ""} onChange={(e) => setSelectedLead({ ...selectedLead, discount_value: Number(e.target.value || 0) })} />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="mt-6 grid gap-4 md:grid-cols-2">
-                  <div className="rounded-2xl border p-4">
-                    <div className="mb-3 flex items-center justify-between">
-                      <div className="font-semibold">Контакты лида</div>
-                      <Button size="sm" variant="outline" onClick={() => setCreateContactOpen(true)}>Создать контакт</Button>
-                    </div>
-                    <div className="space-y-2">
-                      {selectedLead.contacts.map((contact) => (
-                        <div key={contact.id} className="flex items-center justify-between rounded-xl border p-2 text-sm">
-                          <span>{contactDisplayName(contact)}</span>
-                          <Button size="icon" variant="ghost" onClick={() => setSelectedLead({ ...selectedLead, contacts: selectedLead.contacts.filter((item) => item.id !== contact.id) })}><X className="size-4" /></Button>
-                        </div>
-                      ))}
-                      <Select value="" onValueChange={(value) => {
-                        const contact = contacts.find((item) => item.id === value)
-                        if (!contact) return
-                        if (!selectedLead.contacts.some((item) => item.id === contact.id)) {
-                          setSelectedLead({ ...selectedLead, contacts: [...selectedLead.contacts, contact] })
-                        }
-                      }}>
-                        <SelectTrigger><SelectValue placeholder="Добавить контакт из CRM" /></SelectTrigger>
-                        <SelectContent>
-                          {contacts.map((contact) => (
-                            <SelectItem key={contact.id} value={contact.id}>
-                              {contactDisplayName(contact)}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-
-                  <div className="rounded-2xl border p-4">
-                    <div className="mb-3 flex items-center justify-between">
-                      <div className="font-semibold">Товары лида</div>
-                      <Button size="sm" variant="outline" onClick={() => setCreateProductOpen(true)}>Создать товар</Button>
-                    </div>
-                    <div className="space-y-2">
-                      {selectedLead.products.map((item) => (
-                        <div key={item.id} className="rounded-xl border p-2 text-sm">
-                          <div className="flex items-center justify-between gap-2">
-                            <span>{item.product_name || "Товар"}</span>
-                            <Button size="icon" variant="ghost" onClick={() => setSelectedLead({ ...selectedLead, products: selectedLead.products.filter((product) => product.id !== item.id) })}><X className="size-4" /></Button>
-                          </div>
-                          <div className="mt-2 grid grid-cols-3 gap-2">
-                            <Input value={item.quantity} onChange={(e) => setSelectedLead({
-                              ...selectedLead,
-                              products: selectedLead.products.map((product) => product.id === item.id ? { ...product, quantity: Number(e.target.value || 1) } : product),
-                            })} />
-                            <Input value={item.price ?? ""} onChange={(e) => setSelectedLead({
-                              ...selectedLead,
-                              products: selectedLead.products.map((product) => product.id === item.id ? { ...product, price: Number(e.target.value || 0) } : product),
-                            })} />
-                            <Input value={item.discount_value ?? ""} onChange={(e) => setSelectedLead({
-                              ...selectedLead,
-                              products: selectedLead.products.map((product) => product.id === item.id ? { ...product, discount_value: Number(e.target.value || 0) } : product),
-                            })} />
-                          </div>
-                        </div>
-                      ))}
-                      <Select value="" onValueChange={(value) => {
-                        const product = products.find((item) => item.id === value)
-                        if (!product) return
-                        if (!selectedLead.products.some((item) => item.product_id === product.id)) {
-                          setSelectedLead({
-                            ...selectedLead,
-                            products: [
-                              ...selectedLead.products,
-                              { id: `${product.id}-${Date.now()}`, product_id: product.id, product_name: product.name, quantity: 1, price: product.price, discount_type: null, discount_value: null },
-                            ],
-                          })
-                        }
-                      }}>
-                        <SelectTrigger><SelectValue placeholder="Добавить товар из CRM" /></SelectTrigger>
-                        <SelectContent>
-                          {products.map((product) => (
-                            <SelectItem key={product.id} value={product.id}>{product.name}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div className="border-t p-4">
-                <div className="flex justify-end gap-2">
-                  <Button variant="outline" onClick={() => setSelectedLead(null)}>Закрыть</Button>
-                  <Button onClick={async () => {
-                    if (!crmId || !selectedLead) return
-                    await updateLead(crmId, selectedLead.id, {
-                      title: selectedLead.title,
-                      description: selectedLead.description,
-                      stage_id: selectedLead.stage_id,
-                      responsible_user_id: selectedLead.responsible_user_id,
-                      amount: selectedLead.amount,
-                      discount_type: selectedLead.discount_type,
-                      discount_value: selectedLead.discount_value,
-                      contact_ids: JSON.stringify(selectedLead.contacts.map((contact) => contact.id)),
-                      product_items: JSON.stringify(selectedLead.products.map((item) => ({
-                        product_id: item.product_id,
-                        quantity: item.quantity,
-                        price: item.price,
-                        discount_type: item.discount_type,
-                        discount_value: item.discount_value,
-                      }))),
-                    })
-                    await refreshDetail()
-                  }}>
-                    Сохранить
-                  </Button>
                 </div>
               </div>
             </div>
           )}
         </SheetContent>
       </Sheet>
+
+      <Dialog open={contactEditOpen} onOpenChange={setContactEditOpen}>
+        <DialogContent className="sm:max-w-[720px]">
+          <DialogHeader>
+            <DialogTitle>Редактировать контакт</DialogTitle>
+            <DialogDescription>Каждое поле отдельно. Кнопка слева копирует значение.</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-3 py-2">
+            {contactEditForm.type === "person" ? (
+              <>
+                {[
+                  ["Фамилия", "last_name"],
+                  ["Имя", "first_name"],
+                  ["Отчество", "patronymic"],
+                  ["Email", "email"],
+                  ["Телефон", "phone"],
+                  ["Адрес", "address"],
+                  ["Должность", "position"],
+                ].map(([label, field]) => (
+                  <div key={field} className="flex items-center gap-2">
+                    <Button type="button" variant="outline" size="icon" onClick={() => void copyText((contactEditForm as Record<string, string>)[field] || "")}>
+                      <Copy className="size-4" />
+                    </Button>
+                    <div className="flex flex-1 flex-col gap-1">
+                      <label className="text-sm font-medium">{label}</label>
+                      <Input
+                        value={(contactEditForm as Record<string, string>)[field] || ""}
+                        onChange={(e) => setContactEditForm((prev) => ({ ...prev, [field]: e.target.value }))}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </>
+            ) : (
+              <>
+                {[
+                  ["Полное наименование", "company_name_full"],
+                  ["Краткое наименование", "company_name_short"],
+                  ["ИНН", "inn"],
+                  ["КПП", "kpp"],
+                  ["ОГРН", "ogrn"],
+                  ["Email", "email"],
+                  ["Телефон", "phone"],
+                  ["Адрес", "address"],
+                ].map(([label, field]) => (
+                  <div key={field} className="flex items-center gap-2">
+                    <Button type="button" variant="outline" size="icon" onClick={() => void copyText((contactEditForm as Record<string, string>)[field] || "")}>
+                      <Copy className="size-4" />
+                    </Button>
+                    <div className="flex flex-1 flex-col gap-1">
+                      <label className="text-sm font-medium">{label}</label>
+                      <Input
+                        value={(contactEditForm as Record<string, string>)[field] || ""}
+                        onChange={(e) => setContactEditForm((prev) => ({ ...prev, [field]: e.target.value }))}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setContactEditOpen(false)}>Отмена</Button>
+            <Button onClick={() => void handleSaveContactEdit()} disabled={contactEditLoading}>
+              {contactEditLoading ? "Сохранение..." : "Сохранить"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={createLeadOpen} onOpenChange={setCreateLeadOpen}>
         <DialogContent className="sm:max-w-[720px]">
@@ -874,10 +1145,6 @@ export function CrmPage() {
                   {teamMembers.map((member) => <SelectItem key={member.id} value={member.id}>{member.last_name} {member.first_name}</SelectItem>)}
                 </SelectContent>
               </Select>
-            </div>
-            <div className="flex flex-col gap-2">
-              <label className="text-sm font-medium">Сумма</label>
-              <Input value={leadForm.amount} onChange={(e) => setLeadForm((prev) => ({ ...prev, amount: e.target.value }))} />
             </div>
           </div>
           <DialogFooter>

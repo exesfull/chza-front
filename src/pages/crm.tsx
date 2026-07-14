@@ -27,6 +27,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge"
 
 type CrmTab = "leads" | "contacts" | "products" | "documents" | "finances" | "stats"
+const EMPTY_VALUE = "__none__"
 
 const TABS: Array<{ key: CrmTab; title: string; icon: ComponentType<{ className?: string }> }> = [
   { key: "leads", title: "Лиды", icon: Layers3 },
@@ -40,6 +41,39 @@ const TABS: Array<{ key: CrmTab; title: string; icon: ComponentType<{ className?
 function formatMoney(value: number | null | undefined): string {
   const n = Number(value || 0)
   return new Intl.NumberFormat("ru-RU", { style: "currency", currency: "RUB", maximumFractionDigits: 0 }).format(n)
+}
+
+function formatFileSize(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return "0 Б"
+  const units = ["Б", "КБ", "МБ", "ГБ", "ТБ"]
+  let size = bytes
+  let unit = 0
+  while (size >= 1024 && unit < units.length - 1) {
+    size /= 1024
+    unit += 1
+  }
+  const digits = unit === 0 ? 0 : 1
+  return `${size.toFixed(digits)} ${units[unit]}`
+}
+
+function normalizeDecimalInput(value: string): string {
+  const cleaned = value.replace(/,/g, ".").replace(/[^0-9.]/g, "")
+  const [whole, ...rest] = cleaned.split(".")
+  if (rest.length === 0) return whole
+  const fraction = rest.join("").slice(0, 2)
+  return `${whole}.${fraction}`
+}
+
+function contactDisplayName(contact: {
+  type: "person" | "company"
+  first_name: string | null
+  last_name: string | null
+  company_name_short: string | null
+  company_name_full: string | null
+}): string {
+  return contact.type === "company"
+    ? contact.company_name_short || contact.company_name_full || "Контакт"
+    : `${contact.last_name || ""} ${contact.first_name || ""}`.trim() || "Контакт"
 }
 
 export function CrmPage() {
@@ -58,7 +92,7 @@ export function CrmPage() {
     lookupOrganization,
     createProduct,
     createCategory,
-    createDocument,
+    uploadDocuments,
     createFinance,
   } = useCrm(teamLogin)
 
@@ -99,9 +133,11 @@ export function CrmPage() {
   })
   const [contactLookupLoading, setContactLookupLoading] = useState(false)
 
-  const [productForm, setProductForm] = useState({ name: "", price: "", description: "" })
+  const [productForm, setProductForm] = useState({ name: "", price: "", cost_price: "", description: "" })
   const [categoryName, setCategoryName] = useState("")
-  const [documentForm, setDocumentForm] = useState({ title: "", category_id: "", content_text: "", file_name: "", mime_type: "", size_bytes: "" })
+  const [documentUploadCategoryId, setDocumentUploadCategoryId] = useState("")
+  const [documentUploadFiles, setDocumentUploadFiles] = useState<File[]>([])
+  const [documentUploadLoading, setDocumentUploadLoading] = useState(false)
   const [financeForm, setFinanceForm] = useState({ category: "", date: "", amount: "", from_contact_id: "", to_contact_id: "", note: "" })
 
   const stages = selectedCrm?.stages || []
@@ -152,6 +188,18 @@ export function CrmPage() {
     return map
   }, [stages, leads])
 
+  const stageSums = useMemo(() => {
+    const sums = new Map<string, number>()
+    stages.forEach((stage) => sums.set(stage.id, 0))
+    leads.forEach((lead) => {
+      const key = lead.stage_id || ""
+      if (!sums.has(key)) return
+      const amount = Number(lead.amount ?? lead.products_total ?? 0)
+      sums.set(key, (sums.get(key) || 0) + amount)
+    })
+    return sums
+  }, [stages, leads])
+
   const activeCrm = selectedCrm || null
 
   const refreshDetail = async () => {
@@ -197,8 +245,8 @@ export function CrmPage() {
     if (!contactForm.inn.trim()) return
     setContactLookupLoading(true)
     const data = await lookupOrganization(contactForm.inn.trim())
-    if (data?.data) {
-      const suggestion = data.data as { data?: Record<string, any>; unrestricted_value?: string; value?: string }
+    if (data) {
+      const suggestion = data as { data?: Record<string, any>; unrestricted_value?: string; value?: string }
       const org = suggestion.data || {}
       setContactForm((prev) => ({
         ...prev,
@@ -239,10 +287,15 @@ export function CrmPage() {
 
   const handleCreateProduct = async () => {
     if (!crmId || !productForm.name.trim()) return
-    const product = await createProduct(crmId, { name: productForm.name.trim(), price: productForm.price || undefined, description: productForm.description.trim() })
+    const product = await createProduct(crmId, {
+      name: productForm.name.trim(),
+      price: productForm.price || undefined,
+      cost_price: productForm.cost_price || undefined,
+      description: productForm.description.trim(),
+    })
     if (product) {
       setCreateProductOpen(false)
-      setProductForm({ name: "", price: "", description: "" })
+      setProductForm({ name: "", price: "", cost_price: "", description: "" })
       await refreshDetail()
     }
   }
@@ -257,20 +310,22 @@ export function CrmPage() {
     }
   }
 
-  const handleCreateDocument = async () => {
-    if (!crmId || !documentForm.title.trim()) return
-    const doc = await createDocument(crmId, {
-      title: documentForm.title.trim(),
-      category_id: documentForm.category_id || undefined,
-      content_text: documentForm.content_text.trim() || undefined,
-      file_name: documentForm.file_name.trim() || undefined,
-      mime_type: documentForm.mime_type.trim() || undefined,
-      size_bytes: documentForm.size_bytes || undefined,
-    })
-    if (doc) {
-      setCreateDocumentOpen(false)
-      setDocumentForm({ title: "", category_id: "", content_text: "", file_name: "", mime_type: "", size_bytes: "" })
-      await refreshDetail()
+  const handleUploadDocuments = async () => {
+    if (!crmId || documentUploadFiles.length === 0) return
+    setDocumentUploadLoading(true)
+    try {
+      const docs = await uploadDocuments(crmId, {
+        category_id: documentUploadCategoryId || undefined,
+        files: documentUploadFiles,
+      })
+      if (docs.length > 0) {
+        setCreateDocumentOpen(false)
+        setDocumentUploadCategoryId("")
+        setDocumentUploadFiles([])
+        await refreshDetail()
+      }
+    } finally {
+      setDocumentUploadLoading(false)
     }
   }
 
@@ -419,12 +474,18 @@ export function CrmPage() {
         <div className="flex min-h-0 gap-4 overflow-x-auto pb-2">
           {stages.map((stage) => {
             const stageLeads = leadsByStage.get(stage.id) || []
+            const stageSum = stageSums.get(stage.id) || 0
             return (
               <div key={stage.id} className="flex min-w-[320px] max-w-[320px] flex-col rounded-2xl border bg-muted/20">
                 <div className="flex items-center justify-between border-b px-4 py-3">
                   <div>
                     <div className="font-semibold">{stage.name}</div>
-                    <div className="text-xs text-muted-foreground">{stageLeads.length} лидов</div>
+                    <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
+                      <span>{stageLeads.length} лидов</span>
+                      <Badge variant="secondary" className="h-5 rounded-full px-2 text-[10px]">
+                        {formatMoney(stageSum)}
+                      </Badge>
+                    </div>
                   </div>
                   <Button size="icon" variant="ghost" onClick={() => {
                     setLeadForm((prev) => ({ ...prev, stage_id: stage.id }))
@@ -510,7 +571,10 @@ export function CrmPage() {
               <div key={product.id} className="rounded-2xl border p-4">
                 <div className="font-semibold">{product.name}</div>
                 <div className="mt-1 text-sm text-muted-foreground">{product.description || "Без описания"}</div>
-                <div className="mt-3 text-sm font-medium">{formatMoney(product.price)}</div>
+                <div className="mt-3 flex flex-wrap gap-2 text-sm font-medium">
+                  <Badge variant="secondary">{formatMoney(product.price)}</Badge>
+                  <Badge variant="outline">Себестоимость: {formatMoney(product.cost_price)}</Badge>
+                </div>
               </div>
             ))}
           </div>
@@ -526,7 +590,7 @@ export function CrmPage() {
             </div>
             <div className="flex gap-2">
               <Button variant="outline" onClick={() => setCreateCategoryOpen(true)}><Plus className="mr-2 size-4" />Категория</Button>
-              <Button onClick={() => setCreateDocumentOpen(true)}><Plus className="mr-2 size-4" />Документ</Button>
+              <Button onClick={() => setCreateDocumentOpen(true)}><Plus className="mr-2 size-4" />Загрузить файлы</Button>
             </div>
           </div>
           <div className="grid gap-3 p-4 md:grid-cols-2">
@@ -535,6 +599,14 @@ export function CrmPage() {
                 <div className="font-semibold">{category.name}</div>
                 <div className="mt-2 text-sm text-muted-foreground">
                   {documents.filter((document) => document.category_id === category.id).length} документов
+                </div>
+                <div className="mt-3 space-y-2">
+                  {documents.filter((document) => document.category_id === category.id).slice(0, 4).map((document) => (
+                    <div key={document.id} className="rounded-xl border bg-background px-3 py-2 text-sm">
+                      <div className="font-medium">{document.file_name || document.title}</div>
+                      <div className="text-xs text-muted-foreground">{document.mime_type || "Файл"} • {formatFileSize(document.size_bytes)}</div>
+                    </div>
+                  ))}
                 </div>
               </div>
             ))}
@@ -626,10 +698,10 @@ export function CrmPage() {
                   </div>
                   <div className="flex flex-col gap-2">
                     <label className="text-sm font-medium">Ответственный</label>
-                    <Select value={selectedLead.responsible_user_id || ""} onValueChange={(value) => setSelectedLead({ ...selectedLead, responsible_user_id: value })}>
+                    <Select value={selectedLead.responsible_user_id || EMPTY_VALUE} onValueChange={(value) => setSelectedLead({ ...selectedLead, responsible_user_id: value === EMPTY_VALUE ? null : value })}>
                       <SelectTrigger><SelectValue placeholder="Выберите пользователя" /></SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="">Без ответственного</SelectItem>
+                        <SelectItem value={EMPTY_VALUE}>Без ответственного</SelectItem>
                         {teamMembers.map((member) => (
                           <SelectItem key={member.id} value={member.id}>
                             {member.last_name} {member.first_name}
@@ -660,7 +732,7 @@ export function CrmPage() {
                     <div className="space-y-2">
                       {selectedLead.contacts.map((contact) => (
                         <div key={contact.id} className="flex items-center justify-between rounded-xl border p-2 text-sm">
-                          <span>{contact.type === "company" ? contact.company_name_short || contact.company_name_full || "Контакт" : `${contact.last_name || ""} ${contact.first_name || ""}`.trim() || "Контакт"}</span>
+                          <span>{contactDisplayName(contact)}</span>
                           <Button size="icon" variant="ghost" onClick={() => setSelectedLead({ ...selectedLead, contacts: selectedLead.contacts.filter((item) => item.id !== contact.id) })}><X className="size-4" /></Button>
                         </div>
                       ))}
@@ -675,7 +747,7 @@ export function CrmPage() {
                         <SelectContent>
                           {contacts.map((contact) => (
                             <SelectItem key={contact.id} value={contact.id}>
-                              {contact.type === "company" ? contact.company_name_short || contact.company_name_full || "Контакт" : `${contact.last_name || ""} ${contact.first_name || ""}`.trim() || "Контакт"}
+                              {contactDisplayName(contact)}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -785,19 +857,20 @@ export function CrmPage() {
             </div>
             <div className="flex flex-col gap-2">
               <label className="text-sm font-medium">Стадия</label>
-              <Select value={leadForm.stage_id} onValueChange={(value) => setLeadForm((prev) => ({ ...prev, stage_id: value }))}>
+              <Select value={leadForm.stage_id || EMPTY_VALUE} onValueChange={(value) => setLeadForm((prev) => ({ ...prev, stage_id: value === EMPTY_VALUE ? "" : value }))}>
                 <SelectTrigger><SelectValue placeholder="Выберите стадию" /></SelectTrigger>
                 <SelectContent>
+                  <SelectItem value={EMPTY_VALUE}>Без стадии</SelectItem>
                   {stages.map((stage) => <SelectItem key={stage.id} value={stage.id}>{stage.name}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
             <div className="flex flex-col gap-2">
               <label className="text-sm font-medium">Ответственный</label>
-              <Select value={leadForm.responsible_user_id} onValueChange={(value) => setLeadForm((prev) => ({ ...prev, responsible_user_id: value }))}>
+              <Select value={leadForm.responsible_user_id || EMPTY_VALUE} onValueChange={(value) => setLeadForm((prev) => ({ ...prev, responsible_user_id: value === EMPTY_VALUE ? "" : value }))}>
                 <SelectTrigger><SelectValue placeholder="Пользователь" /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Без ответственного</SelectItem>
+                  <SelectItem value={EMPTY_VALUE}>Без ответственного</SelectItem>
                   {teamMembers.map((member) => <SelectItem key={member.id} value={member.id}>{member.last_name} {member.first_name}</SelectItem>)}
                 </SelectContent>
               </Select>
@@ -864,11 +937,22 @@ export function CrmPage() {
       </Dialog>
 
       <Dialog open={createProductOpen} onOpenChange={setCreateProductOpen}>
-        <DialogContent className="sm:max-w-[520px]">
+          <DialogContent className="sm:max-w-[520px]">
           <DialogHeader><DialogTitle>Создать товар</DialogTitle></DialogHeader>
           <div className="grid gap-4 py-2">
             <Input placeholder="Название" value={productForm.name} onChange={(e) => setProductForm((prev) => ({ ...prev, name: e.target.value }))} />
-            <Input placeholder="Цена" value={productForm.price} onChange={(e) => setProductForm((prev) => ({ ...prev, price: e.target.value }))} />
+            <Input
+              placeholder="Цена"
+              inputMode="decimal"
+              value={productForm.price}
+              onChange={(e) => setProductForm((prev) => ({ ...prev, price: normalizeDecimalInput(e.target.value) }))}
+            />
+            <Input
+              placeholder="Себестоимость"
+              inputMode="decimal"
+              value={productForm.cost_price}
+              onChange={(e) => setProductForm((prev) => ({ ...prev, cost_price: normalizeDecimalInput(e.target.value) }))}
+            />
             <Textarea placeholder="Описание" rows={4} value={productForm.description} onChange={(e) => setProductForm((prev) => ({ ...prev, description: e.target.value }))} />
           </div>
           <DialogFooter>
@@ -891,25 +975,52 @@ export function CrmPage() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={createDocumentOpen} onOpenChange={setCreateDocumentOpen}>
-        <DialogContent className="sm:max-w-[680px]">
-          <DialogHeader><DialogTitle>Создать документ</DialogTitle></DialogHeader>
-          <div className="grid gap-4 py-2 md:grid-cols-2">
-            <Input placeholder="Название" className="md:col-span-2" value={documentForm.title} onChange={(e) => setDocumentForm((prev) => ({ ...prev, title: e.target.value }))} />
-            <Select value={documentForm.category_id} onValueChange={(value) => setDocumentForm((prev) => ({ ...prev, category_id: value }))}>
+      <Dialog
+        open={createDocumentOpen}
+        onOpenChange={(open) => {
+          setCreateDocumentOpen(open)
+          if (!open) {
+            setDocumentUploadCategoryId("")
+            setDocumentUploadFiles([])
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-[640px]">
+          <DialogHeader>
+            <DialogTitle>Загрузить файлы</DialogTitle>
+            <DialogDescription>Выберите категорию и добавьте файлы. Имена и типы сохранятся автоматически.</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-2">
+            <Select value={documentUploadCategoryId || EMPTY_VALUE} onValueChange={(value) => setDocumentUploadCategoryId(value === EMPTY_VALUE ? "" : value)}>
               <SelectTrigger><SelectValue placeholder="Категория" /></SelectTrigger>
               <SelectContent>
+                <SelectItem value={EMPTY_VALUE}>Без категории</SelectItem>
                 {documentCategories.map((category) => <SelectItem key={category.id} value={category.id}>{category.name}</SelectItem>)}
               </SelectContent>
             </Select>
-            <Input placeholder="Имя файла" value={documentForm.file_name} onChange={(e) => setDocumentForm((prev) => ({ ...prev, file_name: e.target.value }))} />
-            <Textarea placeholder="Текст документа" className="md:col-span-2" rows={4} value={documentForm.content_text} onChange={(e) => setDocumentForm((prev) => ({ ...prev, content_text: e.target.value }))} />
-            <Input placeholder="Mime type" value={documentForm.mime_type} onChange={(e) => setDocumentForm((prev) => ({ ...prev, mime_type: e.target.value }))} />
-            <Input placeholder="Размер байт" value={documentForm.size_bytes} onChange={(e) => setDocumentForm((prev) => ({ ...prev, size_bytes: e.target.value }))} />
+            <Input
+              type="file"
+              multiple
+              onChange={(e) => setDocumentUploadFiles(Array.from(e.target.files || []))}
+            />
+            <div className="space-y-2">
+              {documentUploadFiles.length > 0 ? documentUploadFiles.map((file) => (
+                <div key={`${file.name}-${file.size}`} className="flex items-center justify-between rounded-xl border px-3 py-2 text-sm">
+                  <span className="truncate">{file.name}</span>
+                  <span className="ml-3 shrink-0 text-muted-foreground">{formatFileSize(file.size)}</span>
+                </div>
+              )) : (
+                <div className="rounded-xl border border-dashed px-3 py-6 text-center text-sm text-muted-foreground">
+                  Файлы ещё не выбраны
+                </div>
+              )}
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateDocumentOpen(false)}>Отмена</Button>
-            <Button onClick={() => void handleCreateDocument()}>Создать</Button>
+            <Button onClick={() => void handleUploadDocuments()} disabled={documentUploadLoading || documentUploadFiles.length === 0}>
+              {documentUploadLoading ? "Загрузка..." : "Загрузить"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -924,15 +1035,13 @@ export function CrmPage() {
             <Select value={financeForm.from_contact_id} onValueChange={(value) => setFinanceForm((prev) => ({ ...prev, from_contact_id: value }))}>
               <SelectTrigger><SelectValue placeholder="От кого" /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="">Не выбрано</SelectItem>
-                {contacts.map((contact) => <SelectItem key={contact.id} value={contact.id}>{contact.type === "company" ? contact.company_name_short || contact.company_name_full || "Контакт" : `${contact.last_name || ""} ${contact.first_name || ""}`.trim() || "Контакт"}</SelectItem>)}
+                {contacts.map((contact) => <SelectItem key={contact.id} value={contact.id}>{contactDisplayName(contact)}</SelectItem>)}
               </SelectContent>
             </Select>
             <Select value={financeForm.to_contact_id} onValueChange={(value) => setFinanceForm((prev) => ({ ...prev, to_contact_id: value }))}>
               <SelectTrigger><SelectValue placeholder="Кому" /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="">Не выбрано</SelectItem>
-                {contacts.map((contact) => <SelectItem key={contact.id} value={contact.id}>{contact.type === "company" ? contact.company_name_short || contact.company_name_full || "Контакт" : `${contact.last_name || ""} ${contact.first_name || ""}`.trim() || "Контакт"}</SelectItem>)}
+                {contacts.map((contact) => <SelectItem key={contact.id} value={contact.id}>{contactDisplayName(contact)}</SelectItem>)}
               </SelectContent>
             </Select>
             <Textarea placeholder="Комментарий" className="md:col-span-2" rows={4} value={financeForm.note} onChange={(e) => setFinanceForm((prev) => ({ ...prev, note: e.target.value }))} />

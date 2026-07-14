@@ -43,6 +43,7 @@ export interface CrmProduct {
   crm_id: string
   name: string
   price: number | null
+  cost_price: number | null
   description: string | null
   created_at: string | null
   updated_at: string | null
@@ -362,6 +363,23 @@ export function useCrm(teamLogin?: string) {
     return data.status === true
   }, [teamLogin])
 
+  const uploadDocuments = useCallback(async (crmId: string, payload: { category_id?: string; files: File[] }) => {
+    if (!teamLogin) return []
+
+    const form = new FormData()
+    form.append("crm_id", crmId)
+    if (payload.category_id) {
+      form.append("category_id", payload.category_id)
+    }
+    payload.files.forEach((file) => form.append("files[]", file))
+
+    const { data } = await api.post(`/main/crm/uploadDocuments/?team_login=${teamLogin}`, form, {
+      headers: { "Content-Type": "multipart/form-data" },
+    })
+
+    return data.status && Array.isArray(data.data) ? (data.data as CrmDocument[]) : []
+  }, [teamLogin])
+
   const createCategory = useCallback(async (crmId: string, name: string) => {
     if (!teamLogin) return null
     const { data } = await api.post(
@@ -417,6 +435,7 @@ export function useCrm(teamLogin?: string) {
     createProduct,
     updateProduct,
     deleteProduct,
+    uploadDocuments,
     createCategory,
     createDocument,
     createFinance,
@@ -440,6 +459,7 @@ export function useCrm(teamLogin?: string) {
     createProduct,
     updateProduct,
     deleteProduct,
+    uploadDocuments,
     createCategory,
     createDocument,
     createFinance,

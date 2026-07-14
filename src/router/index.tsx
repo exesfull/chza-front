@@ -15,6 +15,7 @@ import { CalendarPage } from '@/pages/calendar'
 import { SettingsPage } from '@/pages/settings'
 import { HelpPage } from '@/pages/help'
 import { AiAgentPage } from '@/pages/aiagent'
+import { CrmPage } from '@/pages/crm'
 import { ManagementGeneralPage } from '@/pages/management-general'
 import { ManagementMembersPage } from '@/pages/management-members'
 import { NotFoundPage } from '@/pages/not-found'
@@ -137,6 +138,14 @@ const routes: RouteObject[] = [
       {
         path: 'aiagent/:chatId',
         element: <AiAgentPage />,
+      },
+      {
+        path: 'crm',
+        element: <CrmPage />,
+      },
+      {
+        path: 'crm/:crmId',
+        element: <CrmPage />,
       },
       {
         path: 'admin',

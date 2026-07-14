@@ -8,6 +8,7 @@ import { useLocation, useParams } from "react-router-dom"
 import {
   LayoutDashboard,
   FolderKanban,
+  Building2,
   ListTodo,
   Link2,
   CalendarDays,
@@ -54,6 +55,11 @@ const navMainBase: NavItem[] = [
     title: "Проекты",
     url: "projects",
     icon: FolderKanban,
+  },
+  {
+    title: "CRM",
+    url: "crm",
+    icon: Building2,
   },
   {
     title: "Задачи",

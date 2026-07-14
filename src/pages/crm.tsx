@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState, type ComponentType } from "react"
 import { Link, useNavigate, useParams } from "react-router-dom"
 import {
-  ArrowLeft,
   BarChart3,
   Building2,
   ChevronRight,
@@ -10,6 +9,7 @@ import {
   History,
   Layers3,
   Loader2,
+  Pencil,
   Package,
   Plus,
   Search,
@@ -17,6 +17,7 @@ import {
   MessageSquare,
   Users,
   Wallet,
+  Trash2,
   X,
 } from "lucide-react"
 import { useCrm, type CrmDetail, type CrmLead } from "@/hooks/use-crm"
@@ -93,13 +94,21 @@ export function CrmPage() {
     updateLead,
     deleteLead,
     getLeadHistory,
+    listLeadMessages,
+    sendLeadMessage,
     createContact,
     updateContact,
     lookupOrganization,
     createProduct,
+    updateProduct,
+    deleteProduct,
     createCategory,
+    createStage,
+    updateStage,
+    deleteStage,
     uploadDocuments,
     createFinance,
+    updateFinance,
   } = useCrm(teamLogin)
 
   const [activeTab, setActiveTab] = useState<CrmTab>("leads")
@@ -108,7 +117,19 @@ export function CrmPage() {
   const [selectedLead, setSelectedLead] = useState<CrmLead | null>(null)
   const [selectedLeadTab, setSelectedLeadTab] = useState<LeadSheetTab>("info")
   const [selectedLeadHistory, setSelectedLeadHistory] = useState<Array<{ id: string; reason: string | null; snapshot: unknown; created_at: string | null }>>([])
+  const [selectedLeadMessages, setSelectedLeadMessages] = useState<Array<{ id: string; crm_id: string; lead_id: string; user_id: string | null; role: string; content: string; user_name: string | null; user_img_url: string | null; created_at: string | null; updated_at: string | null }>>([])
+  const [leadMessageDraft, setLeadMessageDraft] = useState("")
+  const [leadMessageSending, setLeadMessageSending] = useState(false)
   const [contactSearch, setContactSearch] = useState("")
+  const [stageEditorOpen, setStageEditorOpen] = useState(false)
+  const [stageEditorSaving, setStageEditorSaving] = useState(false)
+  const [stageDrafts, setStageDrafts] = useState<Array<{ id?: string; name: string; sort_order: number }>>([])
+  const [productEditOpen, setProductEditOpen] = useState(false)
+  const [productEditLoading, setProductEditLoading] = useState(false)
+  const [productEditId, setProductEditId] = useState("")
+  const [financeEditOpen, setFinanceEditOpen] = useState(false)
+  const [financeEditLoading, setFinanceEditLoading] = useState(false)
+  const [financeEditId, setFinanceEditId] = useState("")
 
   const [createCrmOpen, setCreateCrmOpen] = useState(false)
   const [createLeadOpen, setCreateLeadOpen] = useState(false)
@@ -165,7 +186,8 @@ export function CrmPage() {
   const [documentUploadCategoryId, setDocumentUploadCategoryId] = useState("")
   const [documentUploadFiles, setDocumentUploadFiles] = useState<File[]>([])
   const [documentUploadLoading, setDocumentUploadLoading] = useState(false)
-  const [financeForm, setFinanceForm] = useState({ category: "", date: "", amount: "", from_contact_id: "", to_contact_id: "", note: "" })
+  const [documentUploadLeadId, setDocumentUploadLeadId] = useState("")
+  const [financeForm, setFinanceForm] = useState({ category: "", date: "", amount: "", from_contact_id: "", to_contact_id: "", note: "", lead_id: "" })
 
   const stages = selectedCrm?.stages || []
   const leads = selectedCrm?.leads || []
@@ -191,6 +213,7 @@ export function CrmPage() {
         setSelectedCrm(detail)
         if (detail) {
           setLeadForm((prev) => ({ ...prev, stage_id: detail.stages[0]?.id || "" }))
+          setStageDrafts(detail.stages.map((stage) => ({ id: stage.id, name: stage.name, sort_order: stage.sort_order })))
         }
       }
     })
@@ -258,6 +281,7 @@ export function CrmPage() {
   useEffect(() => {
     if (!selectedLead || !crmId) {
       setSelectedLeadHistory([])
+      setSelectedLeadMessages([])
       setSelectedLeadTab("info")
       return
     }
@@ -268,11 +292,16 @@ export function CrmPage() {
         setSelectedLeadHistory(items as Array<{ id: string; reason: string | null; snapshot: unknown; created_at: string | null }>)
       }
     })
+    void listLeadMessages(crmId, selectedLead.id).then((items) => {
+      if (!cancelled) {
+        setSelectedLeadMessages(items)
+      }
+    })
 
     return () => {
       cancelled = true
     }
-  }, [crmId, getLeadHistory, selectedLead])
+  }, [crmId, getLeadHistory, listLeadMessages, selectedLead])
 
   const refreshDetail = async () => {
     if (!crmId) return
@@ -290,6 +319,35 @@ export function CrmPage() {
       setNewCrmName("")
       setNewCrmDescription("")
       navigate(`/teams/${teamLogin}/crm/${crm.id}`)
+    }
+  }
+
+  const openStageEditor = () => {
+    setStageDrafts(stages.map((stage) => ({ id: stage.id, name: stage.name, sort_order: stage.sort_order })))
+    setStageEditorOpen(true)
+  }
+
+  const handleSaveStages = async () => {
+    if (!crmId) return
+    setStageEditorSaving(true)
+    try {
+      for (const draft of stageDrafts) {
+        const name = draft.name.trim()
+        if (name && draft.id) {
+          await updateStage(crmId, draft.id, { name, sort_order: draft.sort_order })
+        } else if (name && !draft.id) {
+          await createStage(crmId, { name, sort_order: draft.sort_order })
+        }
+      }
+      for (const stage of stages) {
+        if (!stageDrafts.some((draft) => draft.id === stage.id)) {
+          await deleteStage(crmId, stage.id)
+        }
+      }
+      setStageEditorOpen(false)
+      await refreshDetail()
+    } finally {
+      setStageEditorSaving(false)
     }
   }
 
@@ -412,6 +470,34 @@ export function CrmPage() {
     }
   }
 
+  const openProductEditor = (product: { id: string; name: string; price: number | null; cost_price: number | null; description: string | null }) => {
+    setProductEditId(product.id)
+    setProductForm({
+      name: product.name || "",
+      price: product.price !== null ? String(product.price) : "",
+      cost_price: product.cost_price !== null ? String(product.cost_price) : "",
+      description: product.description || "",
+    })
+    setProductEditOpen(true)
+  }
+
+  const handleUpdateProduct = async () => {
+    if (!crmId || !productEditId || !productForm.name.trim()) return
+    setProductEditLoading(true)
+    try {
+      await updateProduct(crmId, productEditId, {
+        name: productForm.name.trim(),
+        price: productForm.price || undefined,
+        cost_price: productForm.cost_price || undefined,
+        description: productForm.description.trim(),
+      })
+      setProductEditOpen(false)
+      await refreshDetail()
+    } finally {
+      setProductEditLoading(false)
+    }
+  }
+
   const handleCreateCategory = async () => {
     if (!crmId || !categoryName.trim()) return
     const category = await createCategory(crmId, categoryName.trim())
@@ -428,11 +514,13 @@ export function CrmPage() {
     try {
       const docs = await uploadDocuments(crmId, {
         category_id: documentUploadCategoryId || undefined,
+        lead_id: documentUploadLeadId || undefined,
         files: documentUploadFiles,
       })
       if (docs.length > 0) {
         setCreateDocumentOpen(false)
         setDocumentUploadCategoryId("")
+        setDocumentUploadLeadId("")
         setDocumentUploadFiles([])
         await refreshDetail()
       }
@@ -446,8 +534,49 @@ export function CrmPage() {
     const finance = await createFinance(crmId, financeForm)
     if (finance) {
       setCreateFinanceOpen(false)
-      setFinanceForm({ category: "", date: "", amount: "", from_contact_id: "", to_contact_id: "", note: "" })
+      setFinanceForm({ category: "", date: "", amount: "", from_contact_id: "", to_contact_id: "", note: "", lead_id: "" })
       await refreshDetail()
+    }
+  }
+
+  const openFinanceEditor = (finance: { id: string; category: string | null; date: string | null; amount: number; from_contact_id: string | null; to_contact_id: string | null; note: string | null; lead_id: string | null }) => {
+    setFinanceEditId(finance.id)
+    setFinanceForm({
+      category: finance.category || "",
+      date: finance.date || "",
+      amount: String(finance.amount ?? ""),
+      from_contact_id: finance.from_contact_id || "",
+      to_contact_id: finance.to_contact_id || "",
+      note: finance.note || "",
+      lead_id: finance.lead_id || selectedLead?.id || "",
+    })
+    setFinanceEditOpen(true)
+  }
+
+  const handleUpdateFinance = async () => {
+    if (!crmId || !financeEditId || !financeForm.amount.trim()) return
+    setFinanceEditLoading(true)
+    try {
+      await updateFinance(crmId, financeEditId, financeForm)
+      setFinanceEditOpen(false)
+      await refreshDetail()
+    } finally {
+      setFinanceEditLoading(false)
+    }
+  }
+
+  const handleSendLeadMessage = async () => {
+    if (!crmId || !selectedLead || !leadMessageDraft.trim()) return
+    setLeadMessageSending(true)
+    try {
+      const message = await sendLeadMessage(crmId, selectedLead.id, leadMessageDraft.trim())
+      if (message) {
+        setSelectedLeadMessages((prev) => [...prev, message])
+        setLeadMessageDraft("")
+        await refreshDetail()
+      }
+    } finally {
+      setLeadMessageSending(false)
     }
   }
 
@@ -543,9 +672,9 @@ export function CrmPage() {
           <span className="font-medium text-foreground">{activeCrm?.name || "Загрузка..."}</span>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={() => navigate(`/teams/${teamLogin}/crm`)}>
-            <ArrowLeft className="mr-2 size-4" />
-            К CRM
+          <Button variant="outline" onClick={openStageEditor}>
+            <Pencil className="mr-2 size-4" />
+            Редактировать колонки
           </Button>
           <Button onClick={() => setCreateLeadOpen(true)}>
             <Plus className="mr-2 size-4" />
@@ -694,14 +823,17 @@ export function CrmPage() {
           </div>
           <div className="grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-3">
             {products.map((product) => (
-              <div key={product.id} className="rounded-2xl border p-4">
-                <div className="font-semibold">{product.name}</div>
+              <button key={product.id} type="button" onClick={() => openProductEditor(product)} className="rounded-2xl border p-4 text-left transition-colors hover:bg-muted/40">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="font-semibold">{product.name}</div>
+                  <Pencil className="size-4 text-muted-foreground" />
+                </div>
                 <div className="mt-1 text-sm text-muted-foreground">{product.description || "Без описания"}</div>
                 <div className="mt-3 flex flex-wrap gap-2 text-sm font-medium">
                   <Badge variant="secondary">{formatMoney(product.price)}</Badge>
                   <Badge variant="outline">Себестоимость: {formatMoney(product.cost_price)}</Badge>
                 </div>
-              </div>
+              </button>
             ))}
           </div>
         </div>
@@ -716,7 +848,10 @@ export function CrmPage() {
             </div>
             <div className="flex gap-2">
               <Button variant="outline" onClick={() => setCreateCategoryOpen(true)}><Plus className="mr-2 size-4" />Категория</Button>
-              <Button onClick={() => setCreateDocumentOpen(true)}><Plus className="mr-2 size-4" />Загрузить файлы</Button>
+              <Button onClick={() => {
+                setDocumentUploadLeadId("")
+                setCreateDocumentOpen(true)
+              }}><Plus className="mr-2 size-4" />Загрузить файлы</Button>
             </div>
           </div>
           <div className="grid gap-3 p-4 md:grid-cols-2">
@@ -747,20 +882,26 @@ export function CrmPage() {
               <div className="font-semibold">Финансы</div>
               <div className="text-sm text-muted-foreground">Операции по лидам</div>
             </div>
-            <Button onClick={() => setCreateFinanceOpen(true)}><Plus className="mr-2 size-4" />Добавить операцию</Button>
+            <Button onClick={() => {
+              setFinanceForm((prev) => ({ ...prev, lead_id: "" }))
+              setCreateFinanceOpen(true)
+            }}><Plus className="mr-2 size-4" />Добавить операцию</Button>
           </div>
           <div className="divide-y">
             {finances.map((finance) => (
-              <div key={finance.id} className="flex flex-col gap-1 p-4 md:flex-row md:items-center md:justify-between">
+              <button key={finance.id} type="button" onClick={() => openFinanceEditor(finance)} className="flex w-full flex-col gap-1 p-4 text-left transition-colors hover:bg-muted/40 md:flex-row md:items-center md:justify-between">
                 <div>
                   <div className="font-medium">{finance.category || "Без категории"}</div>
-                  <div className="text-sm text-muted-foreground">{finance.from_contact_name || "—"} → {finance.to_contact_name || "—"}</div>
+                  <div className="text-sm text-muted-foreground">
+                    {finance.from_contact_name || "—"} → {finance.to_contact_name || "—"}
+                    {finance.lead_id ? ` • Лид: ${selectedCrm?.leads.find((lead) => lead.id === finance.lead_id)?.title || finance.lead_id}` : ""}
+                  </div>
                 </div>
                 <div className="text-right">
                   <div className="font-semibold">{formatMoney(finance.amount)}</div>
                   <div className="text-xs text-muted-foreground">{finance.date || "—"}</div>
                 </div>
-              </div>
+              </button>
             ))}
           </div>
         </div>
@@ -816,8 +957,39 @@ export function CrmPage() {
               </SheetHeader>
               <div className="flex-1 overflow-y-auto p-6">
                 {selectedLeadTab === "chat" && (
-                  <div className="rounded-2xl border bg-muted/20 p-6 text-sm text-muted-foreground">
-                    Чат лида скоро будет подключён. Сейчас доступны данные лида и история изменений.
+                  <div className="flex h-[calc(100vh-260px)] flex-col gap-4">
+                    <div className="flex-1 space-y-3 overflow-y-auto rounded-2xl border bg-background p-4">
+                      {selectedLeadMessages.length === 0 ? (
+                        <div className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">
+                          Пока нет сообщений
+                        </div>
+                      ) : selectedLeadMessages.map((message) => (
+                        <div key={message.id} className={`flex ${message.role === "assistant" ? "justify-start" : "justify-end"}`}>
+                          <div className={`max-w-[75%] rounded-2xl px-4 py-3 text-sm ${message.role === "assistant" ? "bg-muted" : "bg-primary text-primary-foreground"}`}>
+                            <div>{message.content}</div>
+                            <div className="mt-1 text-[11px] opacity-70">{message.created_at || ""}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="rounded-2xl border bg-card p-3">
+                      <div className="flex gap-2">
+                        <Input
+                          placeholder="Написать сообщение..."
+                          value={leadMessageDraft}
+                          onChange={(e) => setLeadMessageDraft(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" && !e.shiftKey) {
+                              e.preventDefault()
+                              void handleSendLeadMessage()
+                            }
+                          }}
+                        />
+                        <Button onClick={() => void handleSendLeadMessage()} disabled={leadMessageSending}>
+                          {leadMessageSending ? "..." : "Отправить"}
+                        </Button>
+                      </div>
+                    </div>
                   </div>
                 )}
 
@@ -922,29 +1094,38 @@ export function CrmPage() {
                       </div>
                       <div className="space-y-2">
                         {selectedLead.products.map((item) => (
-                          <div key={item.id} className="rounded-xl border p-3 text-sm">
-                            <div className="flex items-center justify-between gap-2">
-                              <span className="font-medium">{item.product_name || "Товар"}</span>
-                              <Button size="icon" variant="ghost" onClick={() => setSelectedLead({ ...selectedLead, products: selectedLead.products.filter((product) => product.id !== item.id) })}>
-                                <X className="size-4" />
-                              </Button>
-                            </div>
-                            <div className="mt-2 grid grid-cols-3 gap-2">
+                        <div key={item.id} className="rounded-xl border p-3 text-sm">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="font-medium">{item.product_name || "Товар"}</span>
+                            <Button size="icon" variant="ghost" onClick={() => setSelectedLead({ ...selectedLead, products: selectedLead.products.filter((product) => product.id !== item.id) })}>
+                              <X className="size-4" />
+                            </Button>
+                          </div>
+                          <div className="mt-3 grid gap-3 md:grid-cols-3">
+                            <label className="flex flex-col gap-1">
+                              <span className="text-xs text-muted-foreground">Количество</span>
                               <Input value={item.quantity} onChange={(e) => setSelectedLead({
                                 ...selectedLead,
                                 products: selectedLead.products.map((product) => product.id === item.id ? { ...product, quantity: Number(e.target.value || 1) } : product),
                               })} />
+                            </label>
+                            <label className="flex flex-col gap-1">
+                              <span className="text-xs text-muted-foreground">Цена</span>
                               <Input value={item.price ?? ""} onChange={(e) => setSelectedLead({
                                 ...selectedLead,
                                 products: selectedLead.products.map((product) => product.id === item.id ? { ...product, price: Number(e.target.value || 0) } : product),
                               })} />
+                            </label>
+                            <label className="flex flex-col gap-1">
+                              <span className="text-xs text-muted-foreground">Скидка</span>
                               <Input value={item.discount_value ?? ""} onChange={(e) => setSelectedLead({
                                 ...selectedLead,
                                 products: selectedLead.products.map((product) => product.id === item.id ? { ...product, discount_value: Number(e.target.value || 0) } : product),
                               })} />
-                            </div>
+                            </label>
                           </div>
-                        ))}
+                        </div>
+                      ))}
                         <Select value="" onValueChange={(value) => {
                           const product = products.find((item) => item.id === value)
                           if (!product) return
@@ -966,7 +1147,10 @@ export function CrmPage() {
                     <div className="rounded-2xl border p-4">
                       <div className="mb-3 flex items-center justify-between gap-2">
                         <div className="font-semibold">Документы лида</div>
-                        <Button size="sm" variant="outline" onClick={() => setCreateDocumentOpen(true)}>Загрузить файлы</Button>
+                        <Button size="sm" variant="outline" onClick={() => {
+                          setDocumentUploadLeadId(selectedLead.id)
+                          setCreateDocumentOpen(true)
+                        }}>Загрузить файлы</Button>
                       </div>
                       <div className="space-y-2">
                         {selectedLeadDocuments.length === 0 ? (
@@ -983,7 +1167,10 @@ export function CrmPage() {
                     <div className="rounded-2xl border p-4">
                       <div className="mb-3 flex items-center justify-between gap-2">
                         <div className="font-semibold">Финоперации лида</div>
-                        <Button size="sm" variant="outline" onClick={() => setCreateFinanceOpen(true)}>Добавить операцию</Button>
+                        <Button size="sm" variant="outline" onClick={() => {
+                          setFinanceForm((prev) => ({ ...prev, lead_id: selectedLead.id }))
+                          setCreateFinanceOpen(true)
+                        }}>Добавить операцию</Button>
                       </div>
                       <div className="space-y-2">
                         {selectedLeadFinances.length === 0 ? (
@@ -1041,6 +1228,145 @@ export function CrmPage() {
           )}
         </SheetContent>
       </Sheet>
+
+      <Dialog open={stageEditorOpen} onOpenChange={setStageEditorOpen}>
+        <DialogContent className="sm:max-w-[760px]">
+          <DialogHeader>
+            <DialogTitle>Редактировать колонки</DialogTitle>
+            <DialogDescription>Можно добавить новые стадии, переименовать существующие или удалить лишние.</DialogDescription>
+          </DialogHeader>
+          <div className="max-h-[60vh] space-y-3 overflow-y-auto py-2">
+            {stageDrafts.map((stage, index) => (
+              <div key={stage.id || `new-${index}`} className="grid gap-3 rounded-2xl border p-4 md:grid-cols-[1fr_140px_auto] md:items-end">
+                <div className="flex flex-col gap-2">
+                  <label className="text-sm font-medium">Название стадии</label>
+                  <Input
+                    value={stage.name}
+                    onChange={(e) => setStageDrafts((prev) => prev.map((item, itemIndex) => itemIndex === index ? { ...item, name: e.target.value } : item))}
+                    placeholder="Название стадии"
+                  />
+                </div>
+                <div className="flex flex-col gap-2">
+                  <label className="text-sm font-medium">Порядок</label>
+                  <Input
+                    inputMode="numeric"
+                    value={stage.sort_order}
+                    onChange={(e) => setStageDrafts((prev) => prev.map((item, itemIndex) => itemIndex === index ? { ...item, sort_order: Number(e.target.value || 0) } : item))}
+                  />
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setStageDrafts((prev) => prev.filter((_, itemIndex) => itemIndex !== index))}
+                >
+                  <Trash2 className="mr-2 size-4" />
+                  Удалить
+                </Button>
+              </div>
+            ))}
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setStageDrafts((prev) => [...prev, { name: "", sort_order: prev.length }])}
+            >
+              <Plus className="mr-2 size-4" />
+              Добавить колонку
+            </Button>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setStageEditorOpen(false)}>Отмена</Button>
+            <Button onClick={() => void handleSaveStages()} disabled={stageEditorSaving}>
+              {stageEditorSaving ? "Сохранение..." : "Сохранить"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={productEditOpen} onOpenChange={setProductEditOpen}>
+        <DialogContent className="sm:max-w-[560px]">
+          <DialogHeader>
+            <DialogTitle>Редактировать товар</DialogTitle>
+            <DialogDescription>Название, цена, себестоимость и описание редактируются здесь.</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-2">
+            <Input placeholder="Название" value={productForm.name} onChange={(e) => setProductForm((prev) => ({ ...prev, name: e.target.value }))} />
+            <Input
+              placeholder="Цена"
+              inputMode="decimal"
+              value={productForm.price}
+              onChange={(e) => setProductForm((prev) => ({ ...prev, price: normalizeDecimalInput(e.target.value) }))}
+            />
+            <Input
+              placeholder="Себестоимость"
+              inputMode="decimal"
+              value={productForm.cost_price}
+              onChange={(e) => setProductForm((prev) => ({ ...prev, cost_price: normalizeDecimalInput(e.target.value) }))}
+            />
+            <Textarea placeholder="Описание" rows={4} value={productForm.description} onChange={(e) => setProductForm((prev) => ({ ...prev, description: e.target.value }))} />
+          </div>
+          <DialogFooter className="justify-between">
+            <Button
+              variant="destructive"
+              onClick={async () => {
+                if (!crmId || !productEditId) return
+                await deleteProduct(crmId, productEditId)
+                setProductEditOpen(false)
+                await refreshDetail()
+              }}
+            >
+              Удалить
+            </Button>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setProductEditOpen(false)}>Отмена</Button>
+              <Button onClick={() => void handleUpdateProduct()} disabled={productEditLoading}>
+                {productEditLoading ? "Сохранение..." : "Сохранить"}
+              </Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={financeEditOpen} onOpenChange={setFinanceEditOpen}>
+        <DialogContent className="sm:max-w-[680px]">
+          <DialogHeader>
+            <DialogTitle>Редактировать финансовую операцию</DialogTitle>
+            <DialogDescription>Можно поменять категорию, сумму, лид и контакты.</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-2 md:grid-cols-2">
+            <Input placeholder="Категория" value={financeForm.category} onChange={(e) => setFinanceForm((prev) => ({ ...prev, category: e.target.value }))} />
+            <Input type="date" placeholder="Дата" value={financeForm.date} onChange={(e) => setFinanceForm((prev) => ({ ...prev, date: e.target.value }))} />
+            <Input placeholder="Сумма" inputMode="decimal" value={financeForm.amount} onChange={(e) => setFinanceForm((prev) => ({ ...prev, amount: normalizeDecimalInput(e.target.value) }))} />
+            <Select value={financeForm.lead_id || EMPTY_VALUE} onValueChange={(value) => setFinanceForm((prev) => ({ ...prev, lead_id: value === EMPTY_VALUE ? "" : value }))}>
+              <SelectTrigger><SelectValue placeholder="Лид" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value={EMPTY_VALUE}>Без лида</SelectItem>
+                {leads.map((lead) => <SelectItem key={lead.id} value={lead.id}>{lead.title}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Select value={financeForm.from_contact_id || EMPTY_VALUE} onValueChange={(value) => setFinanceForm((prev) => ({ ...prev, from_contact_id: value === EMPTY_VALUE ? "" : value }))}>
+              <SelectTrigger><SelectValue placeholder="От кого" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value={EMPTY_VALUE}>Без контакта</SelectItem>
+                {contacts.map((contact) => <SelectItem key={contact.id} value={contact.id}>{contactDisplayName(contact)}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Select value={financeForm.to_contact_id || EMPTY_VALUE} onValueChange={(value) => setFinanceForm((prev) => ({ ...prev, to_contact_id: value === EMPTY_VALUE ? "" : value }))}>
+              <SelectTrigger><SelectValue placeholder="Кому" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value={EMPTY_VALUE}>Без контакта</SelectItem>
+                {contacts.map((contact) => <SelectItem key={contact.id} value={contact.id}>{contactDisplayName(contact)}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Textarea placeholder="Комментарий" className="md:col-span-2" rows={4} value={financeForm.note} onChange={(e) => setFinanceForm((prev) => ({ ...prev, note: e.target.value }))} />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setFinanceEditOpen(false)}>Отмена</Button>
+            <Button onClick={() => void handleUpdateFinance()} disabled={financeEditLoading}>
+              {financeEditLoading ? "Сохранение..." : "Сохранить"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={contactEditOpen} onOpenChange={setContactEditOpen}>
         <DialogContent className="sm:max-w-[720px]">
@@ -1299,6 +1625,13 @@ export function CrmPage() {
             <Input placeholder="Категория" value={financeForm.category} onChange={(e) => setFinanceForm((prev) => ({ ...prev, category: e.target.value }))} />
             <Input type="date" placeholder="Дата" value={financeForm.date} onChange={(e) => setFinanceForm((prev) => ({ ...prev, date: e.target.value }))} />
             <Input placeholder="Сумма" value={financeForm.amount} onChange={(e) => setFinanceForm((prev) => ({ ...prev, amount: e.target.value }))} />
+            <Select value={financeForm.lead_id || EMPTY_VALUE} onValueChange={(value) => setFinanceForm((prev) => ({ ...prev, lead_id: value === EMPTY_VALUE ? "" : value }))}>
+              <SelectTrigger><SelectValue placeholder="Лид" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value={EMPTY_VALUE}>Без лида</SelectItem>
+                {leads.map((lead) => <SelectItem key={lead.id} value={lead.id}>{lead.title}</SelectItem>)}
+              </SelectContent>
+            </Select>
             <Select value={financeForm.from_contact_id} onValueChange={(value) => setFinanceForm((prev) => ({ ...prev, from_contact_id: value }))}>
               <SelectTrigger><SelectValue placeholder="От кого" /></SelectTrigger>
               <SelectContent>

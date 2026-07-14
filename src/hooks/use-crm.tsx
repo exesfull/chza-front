@@ -17,6 +17,19 @@ export interface CrmStage {
   sort_order: number
 }
 
+export interface CrmLeadMessage {
+  id: string
+  crm_id: string
+  lead_id: string
+  user_id: string | null
+  role: string
+  content: string
+  user_name: string | null
+  user_img_url: string | null
+  created_at: string | null
+  updated_at: string | null
+}
+
 export interface CrmContact {
   id: string
   crm_id: string
@@ -303,6 +316,22 @@ export function useCrm(teamLogin?: string) {
     return data.status === true
   }, [teamLogin])
 
+  const listLeadMessages = useCallback(async (crmId: string, leadId: string) => {
+    if (!teamLogin) return []
+    const { data } = await api.get(`/main/crm/listLeadMessages/?team_login=${teamLogin}&crm_id=${crmId}&lead_id=${leadId}`)
+    return data.status && Array.isArray(data.data) ? (data.data as CrmLeadMessage[]) : []
+  }, [teamLogin])
+
+  const sendLeadMessage = useCallback(async (crmId: string, leadId: string, content: string) => {
+    if (!teamLogin) return null
+    const { data } = await api.post(
+      `/main/crm/sendLeadMessage/?team_login=${teamLogin}`,
+      toFormBody({ crm_id: crmId, lead_id: leadId, content }),
+      { headers: { "Content-Type": "application/x-www-form-urlencoded" } }
+    )
+    return data.status ? (data.data as CrmLeadMessage) : null
+  }, [teamLogin])
+
   const getLeadHistory = useCallback(async (crmId: string, leadId: string) => {
     if (!teamLogin) return []
     const { data } = await api.get(`/main/crm/getLeadHistory/?team_login=${teamLogin}&crm_id=${crmId}&lead_id=${leadId}`)
@@ -379,13 +408,46 @@ export function useCrm(teamLogin?: string) {
     return data.status === true
   }, [teamLogin])
 
-  const uploadDocuments = useCallback(async (crmId: string, payload: { category_id?: string; files: File[] }) => {
+  const createStage = useCallback(async (crmId: string, payload: { name: string; sort_order?: number }) => {
+    if (!teamLogin) return null
+    const { data } = await api.post(
+      `/main/crm/createStage/?team_login=${teamLogin}`,
+      toFormBody({ crm_id: crmId, ...payload }),
+      { headers: { "Content-Type": "application/x-www-form-urlencoded" } }
+    )
+    return data.status ? (data.data as CrmStage) : null
+  }, [teamLogin])
+
+  const updateStage = useCallback(async (crmId: string, stageId: string, payload: { name?: string; sort_order?: number }) => {
+    if (!teamLogin) return null
+    const { data } = await api.post(
+      `/main/crm/updateStage/?team_login=${teamLogin}`,
+      toFormBody({ crm_id: crmId, stage_id: stageId, ...payload }),
+      { headers: { "Content-Type": "application/x-www-form-urlencoded" } }
+    )
+    return data.status ? (data.data as CrmStage) : null
+  }, [teamLogin])
+
+  const deleteStage = useCallback(async (crmId: string, stageId: string) => {
+    if (!teamLogin) return false
+    const { data } = await api.post(
+      `/main/crm/deleteStage/?team_login=${teamLogin}`,
+      toFormBody({ crm_id: crmId, stage_id: stageId }),
+      { headers: { "Content-Type": "application/x-www-form-urlencoded" } }
+    )
+    return data.status === true
+  }, [teamLogin])
+
+  const uploadDocuments = useCallback(async (crmId: string, payload: { category_id?: string; lead_id?: string; files: File[] }) => {
     if (!teamLogin) return []
 
     const form = new FormData()
     form.append("crm_id", crmId)
     if (payload.category_id) {
       form.append("category_id", payload.category_id)
+    }
+    if (payload.lead_id) {
+      form.append("lead_id", payload.lead_id)
     }
     payload.files.forEach((file) => form.append("files[]", file))
 
@@ -426,6 +488,16 @@ export function useCrm(teamLogin?: string) {
     return data.status ? (data.data as CrmFinance) : null
   }, [teamLogin])
 
+  const updateFinance = useCallback(async (crmId: string, financeId: string, payload: Record<string, unknown>) => {
+    if (!teamLogin) return null
+    const { data } = await api.post(
+      `/main/crm/updateFinance/?team_login=${teamLogin}`,
+      toFormBody({ crm_id: crmId, finance_id: financeId, ...payload }),
+      { headers: { "Content-Type": "application/x-www-form-urlencoded" } }
+    )
+    return data.status ? (data.data as CrmFinance) : null
+  }, [teamLogin])
+
   const getStats = useCallback(async (crmId: string) => {
     if (!teamLogin) return null
     const { data } = await api.get(`/main/crm/getStats/?team_login=${teamLogin}&crm_id=${crmId}`)
@@ -445,6 +517,8 @@ export function useCrm(teamLogin?: string) {
     moveLead,
     deleteLead,
     getLeadHistory,
+    listLeadMessages,
+    sendLeadMessage,
     createContact,
     updateContact,
     deleteContact,
@@ -452,10 +526,14 @@ export function useCrm(teamLogin?: string) {
     createProduct,
     updateProduct,
     deleteProduct,
+    createStage,
+    updateStage,
+    deleteStage,
     uploadDocuments,
     createCategory,
     createDocument,
     createFinance,
+    updateFinance,
     getStats,
   }), [
     crms,
@@ -470,6 +548,8 @@ export function useCrm(teamLogin?: string) {
     moveLead,
     deleteLead,
     getLeadHistory,
+    listLeadMessages,
+    sendLeadMessage,
     createContact,
     updateContact,
     deleteContact,
@@ -477,10 +557,14 @@ export function useCrm(teamLogin?: string) {
     createProduct,
     updateProduct,
     deleteProduct,
+    createStage,
+    updateStage,
+    deleteStage,
     uploadDocuments,
     createCategory,
     createDocument,
     createFinance,
+    updateFinance,
     getStats,
   ])
 }

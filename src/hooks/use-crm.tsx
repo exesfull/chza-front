@@ -202,6 +202,18 @@ export interface CrmSummary {
   updated_at: string | null
 }
 
+export interface CrmMember {
+  id: string
+  first_name: string
+  last_name: string
+  email: string
+  img_url: string | null
+}
+
+export interface CrmSettings extends CrmSummary {
+  members: CrmMember[]
+}
+
 export function useCrm(teamLogin?: string) {
   const [crms, setCrms] = useState<CrmSummary[]>([])
   const [loading, setLoading] = useState(true)
@@ -275,6 +287,43 @@ export function useCrm(teamLogin?: string) {
       return data.data as CrmSummary
     }
     return null
+  }, [teamLogin])
+
+  const getCrmSettings = useCallback(async (crmId: string) => {
+    if (!teamLogin) return null
+    const { data } = await api.get(`/main/crm/getSettings/?team_login=${teamLogin}&crm_id=${crmId}`)
+    return data.status && data.data ? (data.data as CrmSettings) : null
+  }, [teamLogin])
+
+  const updateCrmSettings = useCallback(async (crmId: string, payload: { name: string; description: string; member_ids: string[] }) => {
+    if (!teamLogin) return null
+    const { data } = await api.post(
+      `/main/crm/updateSettings/?team_login=${teamLogin}`,
+      toFormBody({ crm_id: crmId, name: payload.name, description: payload.description, member_ids: JSON.stringify(payload.member_ids) }),
+      { headers: { "Content-Type": "application/x-www-form-urlencoded" } }
+    )
+    return data.status && data.data ? (data.data as CrmSettings) : null
+  }, [teamLogin])
+
+  const uploadCrmImage = useCallback(async (crmId: string, image: File) => {
+    if (!teamLogin) return null
+    const form = new FormData()
+    form.append("crm_id", crmId)
+    form.append("image", image)
+    const { data } = await api.post(`/main/crm/uploadImage/?team_login=${teamLogin}`, form, {
+      headers: { "Content-Type": "multipart/form-data" },
+    })
+    return data.status && data.data ? (data.data as CrmSettings) : null
+  }, [teamLogin])
+
+  const resetCrmImage = useCallback(async (crmId: string) => {
+    if (!teamLogin) return null
+    const { data } = await api.post(
+      `/main/crm/resetImage/?team_login=${teamLogin}`,
+      toFormBody({ crm_id: crmId }),
+      { headers: { "Content-Type": "application/x-www-form-urlencoded" } }
+    )
+    return data.status && data.data ? (data.data as CrmSettings) : null
   }, [teamLogin])
 
   const deleteCrm = useCallback(async (crmId: string) => {
@@ -518,6 +567,10 @@ export function useCrm(teamLogin?: string) {
     getCrm,
     createCrm,
     updateCrm,
+    getCrmSettings,
+    updateCrmSettings,
+    uploadCrmImage,
+    resetCrmImage,
     deleteCrm,
     createLead,
     updateLead,
@@ -549,6 +602,10 @@ export function useCrm(teamLogin?: string) {
     getCrm,
     createCrm,
     updateCrm,
+    getCrmSettings,
+    updateCrmSettings,
+    uploadCrmImage,
+    resetCrmImage,
     deleteCrm,
     createLead,
     updateLead,

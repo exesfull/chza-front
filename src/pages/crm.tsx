@@ -15,6 +15,8 @@ import {
   Search,
   Sparkles,
   MessageSquare,
+  Settings,
+  Image as ImageIcon,
   Users,
   Wallet,
   Trash2,
@@ -22,6 +24,7 @@ import {
 } from "lucide-react"
 import { useCrm, type CrmDetail, type CrmLead, type CrmLeadHistory } from "@/hooks/use-crm"
 import { useTeamMembers } from "@/hooks/use-team-members"
+import { useTeams } from "@/hooks/use-teams"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
@@ -30,6 +33,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 
 type CrmTab = "leads" | "contacts" | "products" | "documents" | "finances" | "stats"
 type LeadSheetTab = "chat" | "info" | "history"
@@ -86,11 +90,16 @@ export function CrmPage() {
   const navigate = useNavigate()
   const { teamLogin, crmId } = useParams()
   const { members: teamMembers } = useTeamMembers(teamLogin)
+  const { isAdmin, fetchStorageUsage } = useTeams()
   const {
     crms,
     loading,
     getCrm,
     createCrm,
+    getCrmSettings,
+    updateCrmSettings,
+    uploadCrmImage,
+    resetCrmImage,
     createLead,
     updateLead,
     deleteLead,
@@ -129,6 +138,14 @@ export function CrmPage() {
   const [stageEditorOpen, setStageEditorOpen] = useState(false)
   const [stageEditorSaving, setStageEditorSaving] = useState(false)
   const [stageDrafts, setStageDrafts] = useState<Array<{ id?: string; name: string; sort_order: number }>>([])
+  const [crmSettingsOpen, setCrmSettingsOpen] = useState(false)
+  const [crmSettingsLoading, setCrmSettingsLoading] = useState(false)
+  const [crmSettingsSaving, setCrmSettingsSaving] = useState(false)
+  const [crmSettingsName, setCrmSettingsName] = useState("")
+  const [crmSettingsDescription, setCrmSettingsDescription] = useState("")
+  const [crmSettingsImage, setCrmSettingsImage] = useState("")
+  const [crmSettingsMemberIds, setCrmSettingsMemberIds] = useState<string[]>([])
+  const crmImageInputRef = useRef<HTMLInputElement | null>(null)
   const [productEditOpen, setProductEditOpen] = useState(false)
   const [productEditLoading, setProductEditLoading] = useState(false)
   const [productEditId, setProductEditId] = useState("")
@@ -435,6 +452,74 @@ export function CrmPage() {
   const openStageEditor = () => {
     setStageDrafts(stages.map((stage) => ({ id: stage.id, name: stage.name, sort_order: stage.sort_order })))
     setStageEditorOpen(true)
+  }
+
+  const openCrmSettings = async () => {
+    if (!crmId || !isAdmin) return
+    setCrmSettingsOpen(true)
+    setCrmSettingsLoading(true)
+    try {
+      const settings = await getCrmSettings(crmId)
+      if (!settings) return
+      setCrmSettingsName(settings.name)
+      setCrmSettingsDescription(settings.description || "")
+      setCrmSettingsImage(settings.img_url || "")
+      setCrmSettingsMemberIds(Array.from(new Set([
+        ...settings.members.map((member) => member.id),
+        ...(settings.created_by ? [settings.created_by] : []),
+      ])))
+    } finally {
+      setCrmSettingsLoading(false)
+    }
+  }
+
+  const handleSaveCrmSettings = async () => {
+    if (!crmId || !crmSettingsName.trim()) return
+    setCrmSettingsSaving(true)
+    try {
+      const settings = await updateCrmSettings(crmId, {
+        name: crmSettingsName.trim(),
+        description: crmSettingsDescription.trim(),
+        member_ids: crmSettingsMemberIds,
+      })
+      if (!settings) return
+      setSelectedCrm((current) => current ? { ...current, ...settings } : current)
+      setCrmSettingsImage(settings.img_url || "")
+      setCrmSettingsMemberIds(settings.members.map((member) => member.id))
+      setCrmSettingsOpen(false)
+      await refreshDetail()
+    } finally {
+      setCrmSettingsSaving(false)
+    }
+  }
+
+  const handleCrmImageUpload = async (file?: File) => {
+    if (!crmId || !file) return
+    if (file.size > 5 * 1024 * 1024) return
+    setCrmSettingsSaving(true)
+    try {
+      const settings = await uploadCrmImage(crmId, file)
+      if (!settings) return
+      setCrmSettingsImage(settings.img_url || "")
+      setSelectedCrm((current) => current ? { ...current, img_url: settings.img_url } : current)
+      if (teamLogin) await fetchStorageUsage(teamLogin)
+    } finally {
+      setCrmSettingsSaving(false)
+    }
+  }
+
+  const handleResetCrmImage = async () => {
+    if (!crmId) return
+    setCrmSettingsSaving(true)
+    try {
+      const settings = await resetCrmImage(crmId)
+      if (!settings) return
+      setCrmSettingsImage(settings.img_url || "")
+      setSelectedCrm((current) => current ? { ...current, img_url: settings.img_url } : current)
+      if (teamLogin) await fetchStorageUsage(teamLogin)
+    } finally {
+      setCrmSettingsSaving(false)
+    }
   }
 
   const handleSaveStages = async () => {
@@ -832,6 +917,11 @@ export function CrmPage() {
             <Pencil className="mr-2 size-4" />
             Редактировать колонки
           </Button>
+          {isAdmin && (
+            <Button variant="outline" size="icon" title="Настройки CRM" aria-label="Настройки CRM" onClick={() => void openCrmSettings()}>
+              <Settings className="size-4" />
+            </Button>
+          )}
           <Button onClick={() => setCreateLeadOpen(true)}>
             <Plus className="mr-2 size-4" />
             Создать лид
@@ -1417,6 +1507,104 @@ export function CrmPage() {
           )}
         </SheetContent>
       </Sheet>
+
+      <Dialog open={crmSettingsOpen} onOpenChange={setCrmSettingsOpen}>
+        <DialogContent className="sm:max-w-[820px]">
+          <DialogHeader>
+            <DialogTitle>Настройки CRM</DialogTitle>
+            <DialogDescription>Основная информация и сотрудники, которым доступна эта CRM.</DialogDescription>
+          </DialogHeader>
+          {crmSettingsLoading ? (
+            <div className="flex min-h-52 items-center justify-center">
+              <Loader2 className="size-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : (
+            <div className="grid max-h-[70vh] gap-6 overflow-y-auto py-2 md:grid-cols-[220px_minmax(0,1fr)]">
+              <div className="space-y-3">
+                <Avatar className="size-40 rounded-2xl border">
+                  <AvatarImage src={crmSettingsImage || undefined} className="object-cover" />
+                  <AvatarFallback className="rounded-2xl text-3xl">{crmSettingsName.slice(0, 2).toUpperCase() || "CRM"}</AvatarFallback>
+                </Avatar>
+                <input
+                  ref={crmImageInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(event) => {
+                    void handleCrmImageUpload(event.target.files?.[0])
+                    event.target.value = ""
+                  }}
+                />
+                <div className="flex flex-wrap gap-2">
+                  <Button type="button" size="sm" variant="outline" onClick={() => crmImageInputRef.current?.click()} disabled={crmSettingsSaving}>
+                    <ImageIcon className="mr-2 size-4" />
+                    Изменить
+                  </Button>
+                  <Button type="button" size="sm" variant="outline" onClick={() => void handleResetCrmImage()} disabled={crmSettingsSaving}>
+                    Сбросить
+                  </Button>
+                </div>
+              </div>
+
+              <div className="space-y-5">
+                <div className="grid gap-4">
+                  <label className="grid gap-2 text-sm font-medium">
+                    Название
+                    <Input value={crmSettingsName} onChange={(event) => setCrmSettingsName(event.target.value)} />
+                  </label>
+                  <label className="grid gap-2 text-sm font-medium">
+                    Описание
+                    <Textarea rows={3} value={crmSettingsDescription} onChange={(event) => setCrmSettingsDescription(event.target.value)} />
+                  </label>
+                </div>
+
+                <div className="space-y-3">
+                  <div>
+                    <div className="font-medium">Сотрудники CRM</div>
+                    <div className="text-sm text-muted-foreground">Нажмите на карточку, чтобы добавить или убрать доступ.</div>
+                  </div>
+                  <div className="grid max-h-72 gap-2 overflow-y-auto pr-1 sm:grid-cols-2">
+                    {teamMembers.map((member) => {
+                      const selected = crmSettingsMemberIds.includes(member.id)
+                      const isCreator = activeCrm?.created_by === member.id
+                      const initials = `${member.last_name?.[0] || ""}${member.first_name?.[0] || ""}`.toUpperCase() || "?"
+                      return (
+                        <button
+                          key={member.id}
+                          type="button"
+                          disabled={isCreator}
+                          onClick={() => setCrmSettingsMemberIds((current) => selected
+                            ? current.filter((id) => id !== member.id)
+                            : [...current, member.id]
+                          )}
+                          className={`flex items-center gap-3 rounded-xl border p-3 text-left transition-colors ${selected ? "border-primary bg-primary/5" : "hover:bg-muted/50"} disabled:cursor-default disabled:opacity-80`}
+                        >
+                          <Checkbox checked={selected} />
+                          <Avatar className="size-9">
+                            <AvatarImage src={member.img_url || undefined} />
+                            <AvatarFallback>{initials}</AvatarFallback>
+                          </Avatar>
+                          <div className="min-w-0 flex-1">
+                            <div className="truncate text-sm font-medium">{[member.last_name, member.first_name].filter(Boolean).join(" ") || member.email}</div>
+                            <div className="truncate text-xs text-muted-foreground">{isCreator ? "Создатель CRM" : member.email}</div>
+                          </div>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCrmSettingsOpen(false)}>Отмена</Button>
+            <Button onClick={() => void handleSaveCrmSettings()} disabled={crmSettingsLoading || crmSettingsSaving || !crmSettingsName.trim()}>
+              {crmSettingsSaving ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}
+              Сохранить
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={stageEditorOpen} onOpenChange={setStageEditorOpen}>
         <DialogContent className="sm:max-w-[760px]">

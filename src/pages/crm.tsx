@@ -39,6 +39,48 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 type CrmTab = "leads" | "contacts" | "products" | "documents" | "finances" | "stats"
 type LeadSheetTab = "chat" | "info" | "history"
 const EMPTY_VALUE = "__none__"
+const CHART_COLORS = ["#0ea5e9", "#22c55e", "#f59e0b", "#ef4444", "#8b5cf6", "#06b6d4", "#f97316", "#ec4899", "#84cc16", "#6366f1"]
+
+type DonutSegment = { label: string; value: number; color: string }
+
+function DonutChart({ segments, centerLabel, centerValue, formatValue }: {
+  segments: DonutSegment[]
+  centerLabel: string
+  centerValue: string
+  formatValue: (value: number) => string
+}) {
+  const total = segments.reduce((sum, segment) => sum + segment.value, 0)
+  let offset = 0
+  const gradient = total > 0
+    ? `conic-gradient(${segments.map((segment) => {
+        const start = offset
+        offset += (segment.value / total) * 100
+        return `${segment.color} ${start}% ${offset}%`
+      }).join(", ")})`
+    : "conic-gradient(hsl(var(--muted)) 0 100%)"
+
+  return (
+    <div className="grid gap-6 lg:grid-cols-[240px_minmax(0,1fr)] lg:items-center">
+      <div className="relative mx-auto size-56 rounded-full" style={{ background: gradient }}>
+        <div className="absolute inset-8 flex flex-col items-center justify-center rounded-full bg-card text-center shadow-inner">
+          <div className="max-w-32 text-xl font-bold leading-tight">{centerValue}</div>
+          <div className="mt-1 text-xs text-muted-foreground">{centerLabel}</div>
+        </div>
+      </div>
+      <div className="space-y-2">
+        {segments.length === 0 ? (
+          <div className="text-sm text-muted-foreground">Недостаточно данных</div>
+        ) : segments.map((segment) => (
+          <div key={segment.label} className="flex items-center gap-3 rounded-xl border px-3 py-2">
+            <span className="size-3 shrink-0 rounded-full" style={{ backgroundColor: segment.color }} />
+            <span className="min-w-0 flex-1 truncate text-sm">{segment.label}</span>
+            <span className="text-sm font-semibold">{formatValue(segment.value)}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
 
 const TABS: Array<{ key: CrmTab; title: string; icon: ComponentType<{ className?: string }> }> = [
   { key: "leads", title: "Лиды", icon: Layers3 },
@@ -276,6 +318,53 @@ export function CrmPage() {
     return sums
   }, [stages, leads])
 
+  const leadAmountSegments = useMemo<DonutSegment[]>(() => {
+    const sorted = leads
+      .map((lead) => ({ label: lead.title, value: Math.max(0, Number(lead.amount ?? lead.products_total ?? 0)) }))
+      .filter((item) => item.value > 0)
+      .sort((a, b) => b.value - a.value)
+    const visible = sorted.slice(0, 9)
+    const remainder = sorted.slice(9).reduce((sum, item) => sum + item.value, 0)
+    if (remainder > 0) visible.push({ label: "Другие лиды", value: remainder })
+    return visible.map((item, index) => ({ ...item, color: CHART_COLORS[index % CHART_COLORS.length] }))
+  }, [leads])
+
+  const stageCountSegments = useMemo<DonutSegment[]>(() => stages
+    .map((stage, index) => ({
+      label: stage.name,
+      value: (leadsByStage.get(stage.id) || []).length,
+      color: CHART_COLORS[index % CHART_COLORS.length],
+    }))
+    .filter((item) => item.value > 0), [leadsByStage, stages])
+
+  const stageStatsRows = useMemo(() => stages.map((stage) => {
+    const stageLeads = leadsByStage.get(stage.id) || []
+    const amount = stageSums.get(stage.id) || 0
+    return {
+      id: stage.id,
+      name: stage.name,
+      leads: stageLeads.length,
+      amount,
+      average: stageLeads.length > 0 ? amount / stageLeads.length : 0,
+    }
+  }), [leadsByStage, stageSums, stages])
+
+  const financeCategoryRows = useMemo(() => {
+    const values = new Map<string, { count: number; amount: number }>()
+    finances.forEach((finance) => {
+      const category = finance.category || "Без категории"
+      const current = values.get(category) || { count: 0, amount: 0 }
+      values.set(category, { count: current.count + 1, amount: current.amount + Number(finance.amount || 0) })
+    })
+    return Array.from(values.entries())
+      .map(([category, value]) => ({ category, ...value }))
+      .sort((a, b) => b.amount - a.amount)
+  }, [finances])
+
+  const topLeads = useMemo(() => [...leads]
+    .sort((a, b) => Number(b.amount ?? b.products_total ?? 0) - Number(a.amount ?? a.products_total ?? 0))
+    .slice(0, 10), [leads])
+
   const filteredContacts = useMemo(() => {
     const q = contactSearch.trim().toLowerCase()
     if (!q) return contacts
@@ -295,6 +384,11 @@ export function CrmPage() {
   }, [contacts, contactSearch])
 
   const activeCrm = selectedCrm || null
+  const canManageCrm = Boolean(
+    activeCrm?.can_manage
+    || (user?.id && activeCrm?.created_by === user.id)
+    || teamMembers.some((member) => member.id === user?.id && member.is_admin)
+  )
   const selectedLeadDocuments = useMemo(
     () => documents.filter((document) => document.lead_id === selectedLead?.id),
     [documents, selectedLead?.id]
@@ -475,7 +569,7 @@ export function CrmPage() {
   }
 
   const openCrmSettings = async () => {
-    if (!crmId || !activeCrm?.can_manage) return
+    if (!crmId || !canManageCrm) return
     setCrmSettingsOpen(true)
     setCrmSettingsLoading(true)
     try {
@@ -937,9 +1031,10 @@ export function CrmPage() {
             <Pencil className="mr-2 size-4" />
             Редактировать колонки
           </Button>
-          {activeCrm?.can_manage && (
-            <Button variant="outline" size="icon" title="Настройки CRM" aria-label="Настройки CRM" onClick={() => void openCrmSettings()}>
-              <Settings className="size-4" />
+          {canManageCrm && (
+            <Button variant="outline" title="Редактировать CRM" onClick={() => void openCrmSettings()}>
+              <Settings className="mr-2 size-4" />
+              Редактировать CRM
             </Button>
           )}
           <Button onClick={() => setCreateLeadOpen(true)}>
@@ -1187,20 +1282,141 @@ export function CrmPage() {
       )}
 
       {activeTab === "stats" && stats && (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {[
-            { label: "Стадий", value: stats.stages },
-            { label: "Лидов", value: stats.leads },
-            { label: "Контактов", value: stats.contacts },
-            { label: "Товаров", value: stats.products },
-            { label: "Документов", value: stats.documents },
-            { label: "Оборот", value: formatMoney(stats.finance_amount) },
-          ].map((item) => (
-            <div key={item.label} className="rounded-2xl border bg-card p-4">
-              <div className="text-sm text-muted-foreground">{item.label}</div>
-              <div className="mt-1 text-2xl font-bold">{item.value}</div>
+        <div className="space-y-4">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            {[
+              { label: "Сумма лидов", value: formatMoney(stats.lead_amount), note: `${stats.leads} лидов` },
+              { label: "Средний чек", value: formatMoney(stats.leads > 0 ? stats.lead_amount / stats.leads : 0), note: "На один лид" },
+              { label: "Завершено", value: leads.filter((lead) => Boolean(lead.closed_at)).length, note: `${stats.leads > 0 ? Math.round((leads.filter((lead) => Boolean(lead.closed_at)).length / stats.leads) * 100) : 0}% конверсия` },
+              { label: "Финансовый оборот", value: formatMoney(stats.finance_amount), note: `${stats.finances} операций` },
+            ].map((item) => (
+              <div key={item.label} className="rounded-2xl border bg-card p-5 shadow-sm">
+                <div className="text-sm text-muted-foreground">{item.label}</div>
+                <div className="mt-2 text-2xl font-bold">{item.value}</div>
+                <div className="mt-1 text-xs text-muted-foreground">{item.note}</div>
+              </div>
+            ))}
+          </div>
+
+          <div className="grid gap-4 2xl:grid-cols-2">
+            <div className="rounded-2xl border bg-card p-5">
+              <div className="mb-5">
+                <h3 className="font-semibold">Сумма по лидам</h3>
+                <p className="text-sm text-muted-foreground">Доля каждого лида в общей сумме CRM</p>
+              </div>
+              <DonutChart
+                segments={leadAmountSegments}
+                centerLabel="Общая сумма"
+                centerValue={formatMoney(stats.lead_amount)}
+                formatValue={formatMoney}
+              />
             </div>
-          ))}
+
+            <div className="rounded-2xl border bg-card p-5">
+              <div className="mb-5">
+                <h3 className="font-semibold">Лиды по этапам</h3>
+                <p className="text-sm text-muted-foreground">Распределение текущих лидов по воронке</p>
+              </div>
+              <DonutChart
+                segments={stageCountSegments}
+                centerLabel="Всего лидов"
+                centerValue={String(stats.leads)}
+                formatValue={(value) => `${value} шт.`}
+              />
+            </div>
+          </div>
+
+          <div className="rounded-2xl border bg-card">
+            <div className="border-b p-5">
+              <h3 className="font-semibold">Эффективность этапов</h3>
+              <p className="text-sm text-muted-foreground">Количество, сумма и средний чек на каждом этапе</p>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[760px] text-sm">
+                <thead className="bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                  <tr>
+                    <th className="px-5 py-3 font-medium">Этап</th>
+                    <th className="px-5 py-3 font-medium">Лиды</th>
+                    <th className="px-5 py-3 font-medium">Сумма</th>
+                    <th className="px-5 py-3 font-medium">Средний чек</th>
+                    <th className="w-56 px-5 py-3 font-medium">Доля суммы</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {stageStatsRows.map((row, index) => {
+                    const share = stats.lead_amount > 0 ? (row.amount / stats.lead_amount) * 100 : 0
+                    return (
+                      <tr key={row.id}>
+                        <td className="px-5 py-4 font-medium">{row.name}</td>
+                        <td className="px-5 py-4">{row.leads}</td>
+                        <td className="px-5 py-4 font-semibold">{formatMoney(row.amount)}</td>
+                        <td className="px-5 py-4">{formatMoney(row.average)}</td>
+                        <td className="px-5 py-4">
+                          <div className="flex items-center gap-3">
+                            <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted">
+                              <div className="h-full rounded-full" style={{ width: `${Math.min(100, share)}%`, backgroundColor: CHART_COLORS[index % CHART_COLORS.length] }} />
+                            </div>
+                            <span className="w-12 text-right text-xs text-muted-foreground">{share.toFixed(1)}%</span>
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div className="grid gap-4 xl:grid-cols-2">
+            <div className="rounded-2xl border bg-card">
+              <div className="border-b p-5">
+                <h3 className="font-semibold">Крупнейшие лиды</h3>
+                <p className="text-sm text-muted-foreground">Топ по текущей стоимости</p>
+              </div>
+              <div className="divide-y">
+                {topLeads.length === 0 ? (
+                  <div className="p-5 text-sm text-muted-foreground">Лидов пока нет</div>
+                ) : topLeads.map((lead, index) => (
+                  <button key={lead.id} type="button" onClick={() => setSelectedLead(lead)} className="flex w-full items-center gap-3 px-5 py-3 text-left hover:bg-muted/40">
+                    <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold">{index + 1}</span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate font-medium">{lead.title}</span>
+                      <span className="block truncate text-xs text-muted-foreground">{lead.stage_name || "Без этапа"}</span>
+                    </span>
+                    <span className="font-semibold">{formatMoney(lead.amount ?? lead.products_total)}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-2xl border bg-card">
+              <div className="border-b p-5">
+                <h3 className="font-semibold">Финансы по категориям</h3>
+                <p className="text-sm text-muted-foreground">Сумма и количество операций</p>
+              </div>
+              <div className="divide-y">
+                {financeCategoryRows.length === 0 ? (
+                  <div className="p-5 text-sm text-muted-foreground">Финансовых операций пока нет</div>
+                ) : financeCategoryRows.map((row, index) => {
+                  const maxAmount = Math.max(...financeCategoryRows.map((item) => Math.abs(item.amount)), 1)
+                  return (
+                    <div key={row.category} className="px-5 py-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <div className="font-medium">{row.category}</div>
+                          <div className="text-xs text-muted-foreground">{row.count} операций</div>
+                        </div>
+                        <div className="font-semibold">{formatMoney(row.amount)}</div>
+                      </div>
+                      <div className="mt-3 h-2 overflow-hidden rounded-full bg-muted">
+                        <div className="h-full rounded-full" style={{ width: `${Math.min(100, (Math.abs(row.amount) / maxAmount) * 100)}%`, backgroundColor: CHART_COLORS[index % CHART_COLORS.length] }} />
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          </div>
         </div>
       )}
 

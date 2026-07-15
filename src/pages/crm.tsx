@@ -25,6 +25,7 @@ import {
 import { useCrm, type CrmDetail, type CrmLead, type CrmLeadHistory } from "@/hooks/use-crm"
 import { useTeamMembers } from "@/hooks/use-team-members"
 import { useTeams } from "@/hooks/use-teams"
+import { useUser } from "@/hooks/use-user"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
@@ -90,7 +91,8 @@ export function CrmPage() {
   const navigate = useNavigate()
   const { teamLogin, crmId } = useParams()
   const { members: teamMembers } = useTeamMembers(teamLogin)
-  const { isAdmin, fetchStorageUsage } = useTeams()
+  const { fetchStorageUsage } = useTeams()
+  const { user } = useUser()
   const {
     crms,
     loading,
@@ -353,6 +355,24 @@ export function CrmPage() {
   }, [crmId, getLeadHistory, selectedLead?.id, selectedLeadTab])
 
   useEffect(() => {
+    if (selectedLeadTab !== "chat" || !crmId || !selectedLead?.id) return
+
+    let cancelled = false
+    const refreshMessages = () => {
+      void listLeadMessages(crmId, selectedLead.id).then((items) => {
+        if (!cancelled) setSelectedLeadMessages(items)
+      })
+    }
+    refreshMessages()
+    const intervalId = window.setInterval(refreshMessages, 3000)
+
+    return () => {
+      cancelled = true
+      window.clearInterval(intervalId)
+    }
+  }, [crmId, listLeadMessages, selectedLead?.id, selectedLeadTab])
+
+  useEffect(() => {
     if (!crmId || !selectedLead) return
 
     const snapshot = JSON.stringify({
@@ -455,7 +475,7 @@ export function CrmPage() {
   }
 
   const openCrmSettings = async () => {
-    if (!crmId || !isAdmin) return
+    if (!crmId || !activeCrm?.can_manage) return
     setCrmSettingsOpen(true)
     setCrmSettingsLoading(true)
     try {
@@ -917,7 +937,7 @@ export function CrmPage() {
             <Pencil className="mr-2 size-4" />
             Редактировать колонки
           </Button>
-          {isAdmin && (
+          {activeCrm?.can_manage && (
             <Button variant="outline" size="icon" title="Настройки CRM" aria-label="Настройки CRM" onClick={() => void openCrmSettings()}>
               <Settings className="size-4" />
             </Button>
@@ -1236,14 +1256,31 @@ export function CrmPage() {
                         <div className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">
                           Пока нет сообщений
                         </div>
-                      ) : selectedLeadMessages.map((message) => (
-                        <div key={message.id} className={`flex ${message.role === "assistant" ? "justify-start" : "justify-end"}`}>
-                          <div className={`max-w-[75%] rounded-2xl px-4 py-3 text-sm ${message.role === "assistant" ? "bg-muted" : "bg-primary text-primary-foreground"}`}>
-                            <div>{message.content}</div>
-                            <div className="mt-1 text-[11px] opacity-70">{message.created_at || ""}</div>
+                      ) : selectedLeadMessages.map((message) => {
+                        const isOwnMessage = Boolean(user?.id && message.user_id === user.id)
+                        const initials = (message.user_name || "?")
+                          .split(/\s+/)
+                          .filter(Boolean)
+                          .slice(0, 2)
+                          .map((part) => part[0])
+                          .join("")
+                          .toUpperCase()
+                        return (
+                          <div key={message.id} className={`flex items-end gap-2 ${isOwnMessage ? "justify-end" : "justify-start"}`}>
+                            {!isOwnMessage && (
+                              <Avatar className="size-8 shrink-0">
+                                <AvatarImage src={message.user_img_url || undefined} />
+                                <AvatarFallback>{initials || "?"}</AvatarFallback>
+                              </Avatar>
+                            )}
+                            <div className={`max-w-[75%] rounded-2xl px-4 py-3 text-sm ${isOwnMessage ? "bg-primary text-primary-foreground" : "bg-black text-white"}`}>
+                              {!isOwnMessage && <div className="mb-1 text-xs font-semibold text-white/75">{message.user_name || "Пользователь"}</div>}
+                              <div className="whitespace-pre-wrap">{message.content}</div>
+                              <div className="mt-1 text-[11px] opacity-60">{message.created_at || ""}</div>
+                            </div>
                           </div>
-                        </div>
-                      ))}
+                        )
+                      })}
                     </div>
                     <div className="border-t pt-3">
                       <div className="flex gap-2">
@@ -1276,7 +1313,18 @@ export function CrmPage() {
                       selectedLeadHistory.map((entry) => (
                         <div key={entry.id} className="rounded-2xl border p-4">
                           <div className="flex items-center justify-between gap-3">
-                            <div className="font-medium">{entry.action_title || "Изменён лид"}</div>
+                            <div className="flex min-w-0 items-center gap-2">
+                              {entry.actor && (
+                                <Avatar className="size-8 shrink-0">
+                                  <AvatarImage src={entry.actor.img_url || undefined} />
+                                  <AvatarFallback>{entry.actor.name.slice(0, 2).toUpperCase() || "?"}</AvatarFallback>
+                                </Avatar>
+                              )}
+                              <div className="min-w-0">
+                                <div className="font-medium">{entry.action_title || "Изменён лид"}</div>
+                                {entry.actor?.name && <div className="truncate text-xs text-muted-foreground">{entry.actor.name}</div>}
+                              </div>
+                            </div>
                             <div className="text-xs text-muted-foreground">{entry.created_at || "—"}</div>
                           </div>
                           <div className="mt-3 space-y-2">

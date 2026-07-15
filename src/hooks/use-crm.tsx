@@ -144,6 +144,11 @@ export interface CrmLeadHistory {
     before: string | null
     after: string | null
   }>
+  actor: {
+    id: string | null
+    name: string
+    img_url: string | null
+  } | null
   snapshot: unknown
   created_at: string | null
   updated_at: string | null
@@ -157,6 +162,7 @@ export interface CrmDetail {
   description: string | null
   img_url: string | null
   is_deleted: boolean
+  can_manage: boolean
   stages_count: number
   leads_count: number
   contacts_count: number
@@ -192,6 +198,7 @@ export interface CrmSummary {
   description: string | null
   img_url: string | null
   is_deleted: boolean
+  can_manage: boolean
   stages_count: number
   leads_count: number
   contacts_count: number

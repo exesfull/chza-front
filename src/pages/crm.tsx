@@ -1187,6 +1187,27 @@ export function CrmPage() {
                           </Select>
                         </div>
                       </div>
+                      <div className="flex justify-end">
+                        <Button onClick={async () => {
+                          if (!crmId || !selectedLead) return
+                          await updateLead(crmId, selectedLead.id, {
+                            title: selectedLead.title,
+                            description: selectedLead.description,
+                            stage_id: selectedLead.stage_id,
+                            responsible_user_id: selectedLead.responsible_user_id,
+                            contact_ids: JSON.stringify(selectedLead.contacts.map((contact) => contact.id)),
+                            product_items: JSON.stringify(selectedLead.products.map((item) => ({
+                              product_id: item.product_id,
+                              quantity: item.quantity,
+                              discount_type: item.discount_type,
+                              discount_value: item.discount_value,
+                            }))),
+                          })
+                          await refreshDetail()
+                        }}>
+                          Сохранить
+                        </Button>
+                      </div>
                       <div className="flex items-center gap-2">
                         <Badge variant="secondary">Сумма: {formatMoney(selectedLead.amount ?? selectedLead.products_total)}</Badge>
                         <span className="text-sm text-muted-foreground">Цена считается из товаров лида</span>
@@ -1231,14 +1252,11 @@ export function CrmPage() {
                     <div className="rounded-2xl border p-4">
                       <div className="mb-3 flex items-center justify-between gap-2">
                         <div className="font-semibold">Товары лида</div>
-                        <div className="flex gap-2">
-                          <Button size="sm" variant="outline" onClick={() => setCreateProductOpen(true)}>Создать товар</Button>
-                          <Button size="sm" variant="outline" onClick={() => {
-                            setLeadProductPickerSelected([])
-                            setLeadProductPickerSearch("")
-                            setLeadProductPickerOpen(true)
-                          }}>Добавить товары</Button>
-                        </div>
+                        <Button size="sm" variant="outline" onClick={() => {
+                          setLeadProductPickerSelected([])
+                          setLeadProductPickerSearch("")
+                          setLeadProductPickerOpen(true)
+                        }}>Добавить товары</Button>
                       </div>
                       <div className="space-y-2">
                         {selectedLead.products.map((item) => (
@@ -1285,7 +1303,7 @@ export function CrmPage() {
                             </label>
                           </div>
                           <div className="mt-3 rounded-xl bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-                            <div>Цена товара: {formatMoney(item.price)}</div>
+                            <div>Цена товара: {item.price === null || item.price === undefined ? "Цена не указана" : formatMoney(item.price)}</div>
                             <div>Итого по строке: {formatMoney((Number(item.price || 0) * Number(item.quantity || 1)) * (1 - Number(item.discount_value || 0) / 100))}</div>
                             <div>Скидка: {Number(item.discount_value || 0)}%</div>
                           </div>
@@ -1340,14 +1358,11 @@ export function CrmPage() {
                 )}
               </div>
               <div className="border-t p-4">
-                <div className="flex items-center justify-between gap-2">
-                  <Button variant="destructive" onClick={async () => {
-                    await deleteLead(activeCrm.id, selectedLead.id)
-                    setSelectedLead(null)
-                    await refreshDetail()
-                  }}>Удалить</Button>
-                  <Button variant="outline" onClick={() => setSelectedLead(null)}>Закрыть</Button>
-                </div>
+                <Button variant="destructive" onClick={async () => {
+                  await deleteLead(activeCrm.id, selectedLead.id)
+                  setSelectedLead(null)
+                  await refreshDetail()
+                }}>Удалить</Button>
               </div>
             </div>
           )}
@@ -1721,11 +1736,11 @@ export function CrmPage() {
                     className={`flex w-full items-start gap-3 rounded-2xl border p-4 text-left transition-colors ${checked ? "border-primary bg-primary/5" : "hover:bg-muted/40"} ${alreadyAdded ? "opacity-60" : ""}`}
                   >
                     <Checkbox checked={checked} disabled={alreadyAdded} />
-                    <div className="min-w-0 flex-1">
-                      <div className="font-medium">{product.name}</div>
-                      <div className="mt-1 text-sm text-muted-foreground">{product.description || "Без описания"}</div>
-                      <div className="mt-2 flex flex-wrap gap-2 text-xs">
-                        <Badge variant="secondary">{formatMoney(product.price)}</Badge>
+                      <div className="min-w-0 flex-1">
+                        <div className="font-medium">{product.name}</div>
+                        <div className="mt-1 text-sm text-muted-foreground">{product.description || "Без описания"}</div>
+                        <div className="mt-2 flex flex-wrap gap-2 text-xs">
+                        <Badge variant="secondary">{product.price === null || product.price === undefined ? "Цена не указана" : formatMoney(product.price)}</Badge>
                         <Badge variant="outline">Себестоимость: {formatMoney(product.cost_price)}</Badge>
                         {alreadyAdded && <Badge variant="default">Уже добавлен</Badge>}
                       </div>

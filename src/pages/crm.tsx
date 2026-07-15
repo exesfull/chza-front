@@ -1108,6 +1108,20 @@ export function CrmPage() {
                         </Button>
                       )
                     })}
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      size="icon"
+                      aria-label="Удалить лид"
+                      title="Удалить лид"
+                      onClick={async () => {
+                        await deleteLead(activeCrm.id, selectedLead.id)
+                        setSelectedLead(null)
+                        await refreshDetail()
+                      }}
+                    >
+                      <Trash2 className="size-4" />
+                    </Button>
                   </div>
                 </div>
               </SheetHeader>
@@ -1202,14 +1216,7 @@ export function CrmPage() {
                           </Select>
                         </div>
                       </div>
-                      <div className="flex justify-end gap-2">
-                        <Button variant="destructive" onClick={async () => {
-                          await deleteLead(activeCrm.id, selectedLead.id)
-                          setSelectedLead(null)
-                          await refreshDetail()
-                        }}>
-                          Удалить
-                        </Button>
+                      <div className="flex justify-end">
                         <Button onClick={async () => {
                           if (!crmId || !selectedLead) return
                           await updateLead(crmId, selectedLead.id, {

@@ -761,14 +761,19 @@ export function CrmPage() {
                       onDragEnd={() => setDraggedLeadId("")}
                       className="cursor-grab rounded-2xl border bg-background p-3 text-left shadow-sm transition-colors hover:bg-muted/40 active:cursor-grabbing"
                     >
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0">
-                          <div className="font-semibold">{lead.title}</div>
-                          <div className="mt-1 line-clamp-2 text-xs text-muted-foreground">{lead.description || "Без описания"}</div>
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="font-semibold">{lead.title}</div>
+                    <div className="mt-1 line-clamp-2 text-xs text-muted-foreground">{lead.description || "Без описания"}</div>
+                  </div>
+                        <div className="flex flex-col items-end gap-1">
+                          <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] text-primary">
+                            {formatMoney(lead.amount ?? lead.products_total)}
+                          </span>
+                          <Badge variant="secondary" className="text-[10px]">
+                            {lead.products.length} {lead.products.length === 1 ? "товар" : "товаров"}
+                          </Badge>
                         </div>
-                        <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] text-primary">
-                          {formatMoney(lead.amount ?? lead.products_total)}
-                        </span>
                       </div>
                       <div className="mt-3 flex flex-wrap gap-1">
                         {lead.contacts.slice(0, 2).map((contact) => (
@@ -1119,28 +1124,45 @@ export function CrmPage() {
                               <X className="size-4" />
                             </Button>
                           </div>
-                          <div className="mt-3 grid gap-3 md:grid-cols-3">
+                          <div className="mt-3 grid gap-3 md:grid-cols-2">
                             <label className="flex flex-col gap-1">
                               <span className="text-xs text-muted-foreground">Количество</span>
-                              <Input value={item.quantity} onChange={(e) => setSelectedLead({
-                                ...selectedLead,
-                                products: selectedLead.products.map((product) => product.id === item.id ? { ...product, quantity: Number(e.target.value || 1) } : product),
-                              })} />
-                            </label>
-                            <label className="flex flex-col gap-1">
-                              <span className="text-xs text-muted-foreground">Цена</span>
-                              <Input value={item.price ?? ""} onChange={(e) => setSelectedLead({
-                                ...selectedLead,
-                                products: selectedLead.products.map((product) => product.id === item.id ? { ...product, price: Number(e.target.value || 0) } : product),
-                              })} />
+                              <Input
+                                type="number"
+                                min={1}
+                                step={1}
+                                value={item.quantity}
+                                onChange={(e) => {
+                                  const nextQuantity = Math.max(1, Number(e.target.value || 1))
+                                  setSelectedLead({
+                                    ...selectedLead,
+                                    products: selectedLead.products.map((product) => product.id === item.id ? { ...product, quantity: nextQuantity } : product),
+                                  })
+                                }}
+                              />
                             </label>
                             <label className="flex flex-col gap-1">
                               <span className="text-xs text-muted-foreground">Скидка</span>
-                              <Input value={item.discount_value ?? ""} onChange={(e) => setSelectedLead({
-                                ...selectedLead,
-                                products: selectedLead.products.map((product) => product.id === item.id ? { ...product, discount_value: Number(e.target.value || 0) } : product),
-                              })} />
+                              <Input
+                                type="number"
+                                min={0}
+                                max={100}
+                                step={1}
+                                value={item.discount_value ?? 0}
+                                onChange={(e) => {
+                                  const nextDiscount = Math.max(0, Math.min(100, Number(e.target.value || 0)))
+                                  setSelectedLead({
+                                    ...selectedLead,
+                                    products: selectedLead.products.map((product) => product.id === item.id ? { ...product, discount_value: nextDiscount } : product),
+                                  })
+                                }}
+                              />
                             </label>
+                          </div>
+                          <div className="mt-3 rounded-xl bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+                            <div>Цена товара: {formatMoney(item.price)}</div>
+                            <div>Итого по строке: {formatMoney((Number(item.price || 0) * Number(item.quantity || 1)) * (1 - Number(item.discount_value || 0) / 100))}</div>
+                            <div>Скидка: {Number(item.discount_value || 0)}%</div>
                           </div>
                         </div>
                       ))}
@@ -1150,7 +1172,7 @@ export function CrmPage() {
                           if (!selectedLead.products.some((item) => item.product_id === product.id)) {
                             setSelectedLead({
                               ...selectedLead,
-                              products: [...selectedLead.products, { id: `${product.id}-${Date.now()}`, product_id: product.id, product_name: product.name, quantity: 1, price: product.price, discount_type: null, discount_value: null }],
+                              products: [...selectedLead.products, { id: `${product.id}-${Date.now()}`, product_id: product.id, product_name: product.name, quantity: 1, price: product.price, discount_type: null, discount_value: 0 }],
                             })
                           }
                         }}>

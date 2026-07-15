@@ -336,7 +336,8 @@ export function CrmPage() {
       product_items: selectedLead.products.map((item) => ({
         product_id: item.product_id,
         quantity: item.quantity,
-        discount_type: item.discount_type,
+        price: item.price,
+        discount_type: "percent",
         discount_value: item.discount_value ?? 0,
       })),
     })
@@ -364,7 +365,8 @@ export function CrmPage() {
         product_items: JSON.stringify(selectedLead.products.map((item) => ({
           product_id: item.product_id,
           quantity: item.quantity,
-          discount_type: item.discount_type,
+          price: item.price,
+          discount_type: "percent",
           discount_value: item.discount_value ?? 0,
         }))),
       }).then((savedLead) => {
@@ -381,7 +383,8 @@ export function CrmPage() {
             product_items: savedLead.products.map((item) => ({
               product_id: item.product_id,
               quantity: item.quantity,
-              discount_type: item.discount_type,
+              price: item.price,
+              discount_type: "percent",
               discount_value: item.discount_value ?? 0,
             })),
           })
@@ -592,8 +595,8 @@ export function CrmPage() {
     }
   }
 
-  const handleAddSelectedLeadProducts = () => {
-    if (!selectedLead) return
+  const handleAddSelectedLeadProducts = async () => {
+    if (!crmId || !selectedLead) return
     const currentIds = new Set(selectedLead.products.map((item) => item.product_id))
     const additions = leadProductPickerSelected
       .map((productId) => products.find((product) => product.id === productId))
@@ -605,12 +608,24 @@ export function CrmPage() {
         product_name: product.name,
         quantity: 1,
         price: product.price,
-        discount_type: null,
+        discount_type: "percent",
         discount_value: 0,
       }))
 
     if (additions.length > 0) {
-      setSelectedLead({ ...selectedLead, products: [...selectedLead.products, ...additions] })
+      const nextProducts = [...selectedLead.products, ...additions]
+      const savedLead = await updateLead(crmId, selectedLead.id, {
+        product_items: JSON.stringify(nextProducts.map((item) => ({
+          product_id: item.product_id,
+          quantity: item.quantity,
+          price: item.price,
+          discount_type: "percent",
+          discount_value: item.discount_value ?? 0,
+        }))),
+      })
+      if (!savedLead) return
+      setSelectedLead(savedLead)
+      await refreshDetail()
     }
     setLeadProductPickerOpen(false)
     setLeadProductPickerSelected([])
@@ -1187,7 +1202,14 @@ export function CrmPage() {
                           </Select>
                         </div>
                       </div>
-                      <div className="flex justify-end">
+                      <div className="flex justify-end gap-2">
+                        <Button variant="destructive" onClick={async () => {
+                          await deleteLead(activeCrm.id, selectedLead.id)
+                          setSelectedLead(null)
+                          await refreshDetail()
+                        }}>
+                          Удалить
+                        </Button>
                         <Button onClick={async () => {
                           if (!crmId || !selectedLead) return
                           await updateLead(crmId, selectedLead.id, {
@@ -1199,7 +1221,8 @@ export function CrmPage() {
                             product_items: JSON.stringify(selectedLead.products.map((item) => ({
                               product_id: item.product_id,
                               quantity: item.quantity,
-                              discount_type: item.discount_type,
+                              price: item.price,
+                              discount_type: "percent",
                               discount_value: item.discount_value,
                             }))),
                           })
@@ -1356,13 +1379,6 @@ export function CrmPage() {
                     </div>
                   </div>
                 )}
-              </div>
-              <div className="border-t p-4">
-                <Button variant="destructive" onClick={async () => {
-                  await deleteLead(activeCrm.id, selectedLead.id)
-                  setSelectedLead(null)
-                  await refreshDetail()
-                }}>Удалить</Button>
               </div>
             </div>
           )}
@@ -1757,7 +1773,7 @@ export function CrmPage() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setLeadProductPickerOpen(false)}>Отмена</Button>
-            <Button onClick={handleAddSelectedLeadProducts} disabled={leadProductPickerSelected.length === 0}>Добавить выбранные</Button>
+            <Button onClick={() => void handleAddSelectedLeadProducts()} disabled={leadProductPickerSelected.length === 0}>Добавить выбранные</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

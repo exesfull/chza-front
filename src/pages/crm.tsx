@@ -120,6 +120,7 @@ export function CrmPage() {
   const [selectedLeadMessages, setSelectedLeadMessages] = useState<Array<{ id: string; crm_id: string; lead_id: string; user_id: string | null; role: string; content: string; user_name: string | null; user_img_url: string | null; created_at: string | null; updated_at: string | null }>>([])
   const [leadMessageDraft, setLeadMessageDraft] = useState("")
   const [leadMessageSending, setLeadMessageSending] = useState(false)
+  const [draggedLeadId, setDraggedLeadId] = useState("")
   const [contactSearch, setContactSearch] = useState("")
   const [stageEditorOpen, setStageEditorOpen] = useState(false)
   const [stageEditorSaving, setStageEditorSaving] = useState(false)
@@ -580,6 +581,15 @@ export function CrmPage() {
     }
   }
 
+  const handleLeadDrop = async (stageId: string) => {
+    if (!crmId || !draggedLeadId) return
+    const lead = leads.find((item) => item.id === draggedLeadId)
+    setDraggedLeadId("")
+    if (!lead || lead.stage_id === stageId) return
+    await updateLead(crmId, lead.id, { stage_id: stageId })
+    await refreshDetail()
+  }
+
   if (!teamLogin) return null
 
   if (!crmId) {
@@ -717,7 +727,12 @@ export function CrmPage() {
             const stageLeads = leadsByStage.get(stage.id) || []
             const stageSum = stageSums.get(stage.id) || 0
             return (
-              <div key={stage.id} className="flex min-w-[320px] max-w-[320px] flex-col rounded-2xl border bg-muted/20">
+              <div
+                key={stage.id}
+                className={`flex min-w-[320px] max-w-[320px] flex-col rounded-2xl border bg-muted/20 transition-colors ${draggedLeadId ? "ring-2 ring-primary/40" : ""}`}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={() => void handleLeadDrop(stage.id)}
+              >
                 <div className="flex items-center justify-between border-b px-4 py-3">
                   <div>
                     <div className="font-semibold">{stage.name}</div>
@@ -741,7 +756,10 @@ export function CrmPage() {
                       key={lead.id}
                       type="button"
                       onClick={() => setSelectedLead(lead)}
-                      className="rounded-2xl border bg-background p-3 text-left shadow-sm transition-colors hover:bg-muted/40"
+                      draggable
+                      onDragStart={() => setDraggedLeadId(lead.id)}
+                      onDragEnd={() => setDraggedLeadId("")}
+                      className="cursor-grab rounded-2xl border bg-background p-3 text-left shadow-sm transition-colors hover:bg-muted/40 active:cursor-grabbing"
                     >
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
@@ -1189,41 +1207,43 @@ export function CrmPage() {
                   </div>
                 )}
               </div>
-              <div className="border-t p-4">
-                <div className="flex items-center justify-between gap-2">
-                  <Button variant="destructive" onClick={async () => {
-                    await deleteLead(activeCrm.id, selectedLead.id)
-                    setSelectedLead(null)
-                    await refreshDetail()
-                  }}>Удалить</Button>
-                  <div className="flex gap-2">
-                    <Button variant="outline" onClick={() => setSelectedLead(null)}>Закрыть</Button>
-                    <Button onClick={async () => {
-                      if (!crmId || !selectedLead) return
-                      await updateLead(crmId, selectedLead.id, {
-                        title: selectedLead.title,
-                        description: selectedLead.description,
-                        stage_id: selectedLead.stage_id,
-                        responsible_user_id: selectedLead.responsible_user_id,
-                        amount: selectedLead.amount,
-                        discount_type: selectedLead.discount_type,
-                        discount_value: selectedLead.discount_value,
-                        contact_ids: JSON.stringify(selectedLead.contacts.map((contact) => contact.id)),
-                        product_items: JSON.stringify(selectedLead.products.map((item) => ({
-                          product_id: item.product_id,
-                          quantity: item.quantity,
-                          price: item.price,
-                          discount_type: item.discount_type,
-                          discount_value: item.discount_value,
-                        }))),
-                      })
+              {selectedLeadTab !== "chat" && (
+                <div className="border-t p-4">
+                  <div className="flex items-center justify-between gap-2">
+                    <Button variant="destructive" onClick={async () => {
+                      await deleteLead(activeCrm.id, selectedLead.id)
+                      setSelectedLead(null)
                       await refreshDetail()
-                    }}>
-                      Сохранить
-                    </Button>
+                    }}>Удалить</Button>
+                    <div className="flex gap-2">
+                      <Button variant="outline" onClick={() => setSelectedLead(null)}>Закрыть</Button>
+                      <Button onClick={async () => {
+                        if (!crmId || !selectedLead) return
+                        await updateLead(crmId, selectedLead.id, {
+                          title: selectedLead.title,
+                          description: selectedLead.description,
+                          stage_id: selectedLead.stage_id,
+                          responsible_user_id: selectedLead.responsible_user_id,
+                          amount: selectedLead.amount,
+                          discount_type: selectedLead.discount_type,
+                          discount_value: selectedLead.discount_value,
+                          contact_ids: JSON.stringify(selectedLead.contacts.map((contact) => contact.id)),
+                          product_items: JSON.stringify(selectedLead.products.map((item) => ({
+                            product_id: item.product_id,
+                            quantity: item.quantity,
+                            price: item.price,
+                            discount_type: item.discount_type,
+                            discount_value: item.discount_value,
+                          }))),
+                        })
+                        await refreshDetail()
+                      }}>
+                        Сохранить
+                      </Button>
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
             </div>
           )}
         </SheetContent>

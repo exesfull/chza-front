@@ -137,6 +137,13 @@ export interface CrmLeadHistory {
   crm_id: string
   lead_id: string
   reason: string | null
+  action_title: string
+  changes: Array<{
+    field: string
+    label: string
+    before: string | null
+    after: string | null
+  }>
   snapshot: unknown
   created_at: string | null
   updated_at: string | null

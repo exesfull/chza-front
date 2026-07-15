@@ -20,7 +20,7 @@ import {
   Trash2,
   X,
 } from "lucide-react"
-import { useCrm, type CrmDetail, type CrmLead } from "@/hooks/use-crm"
+import { useCrm, type CrmDetail, type CrmLead, type CrmLeadHistory } from "@/hooks/use-crm"
 import { useTeamMembers } from "@/hooks/use-team-members"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -117,7 +117,7 @@ export function CrmPage() {
   const [selectedCrm, setSelectedCrm] = useState<CrmDetail | null>(null)
   const [selectedLead, setSelectedLead] = useState<CrmLead | null>(null)
   const [selectedLeadTab, setSelectedLeadTab] = useState<LeadSheetTab>("info")
-  const [selectedLeadHistory, setSelectedLeadHistory] = useState<Array<{ id: string; reason: string | null; snapshot: unknown; created_at: string | null }>>([])
+  const [selectedLeadHistory, setSelectedLeadHistory] = useState<CrmLeadHistory[]>([])
   const [selectedLeadMessages, setSelectedLeadMessages] = useState<Array<{ id: string; crm_id: string; lead_id: string; user_id: string | null; role: string; content: string; user_name: string | null; user_img_url: string | null; created_at: string | null; updated_at: string | null }>>([])
   const [leadMessageDraft, setLeadMessageDraft] = useState("")
   const [leadMessageSending, setLeadMessageSending] = useState(false)
@@ -308,7 +308,7 @@ export function CrmPage() {
     let cancelled = false
     void getLeadHistory(crmId, selectedLead.id).then((items) => {
       if (!cancelled) {
-        setSelectedLeadHistory(items as Array<{ id: string; reason: string | null; snapshot: unknown; created_at: string | null }>)
+        setSelectedLeadHistory(items)
       }
     })
     void listLeadMessages(crmId, selectedLead.id).then((items) => {
@@ -321,6 +321,19 @@ export function CrmPage() {
       cancelled = true
     }
   }, [crmId, getLeadHistory, listLeadMessages, selectedLead])
+
+  useEffect(() => {
+    if (selectedLeadTab !== "history" || !crmId || !selectedLead?.id) return
+
+    let cancelled = false
+    void getLeadHistory(crmId, selectedLead.id).then((items) => {
+      if (!cancelled) setSelectedLeadHistory(items)
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [crmId, getLeadHistory, selectedLead?.id, selectedLeadTab])
 
   useEffect(() => {
     if (!crmId || !selectedLead) return
@@ -1173,10 +1186,23 @@ export function CrmPage() {
                       selectedLeadHistory.map((entry) => (
                         <div key={entry.id} className="rounded-2xl border p-4">
                           <div className="flex items-center justify-between gap-3">
-                            <div className="font-medium">{entry.reason || "Изменение лида"}</div>
+                            <div className="font-medium">{entry.action_title || "Изменён лид"}</div>
                             <div className="text-xs text-muted-foreground">{entry.created_at || "—"}</div>
                           </div>
-                          <div className="mt-2 text-sm text-muted-foreground">Изменения сохранены автоматически.</div>
+                          <div className="mt-3 space-y-2">
+                            {entry.changes.length === 0 ? (
+                              <div className="text-sm text-muted-foreground">Сохранено состояние лида.</div>
+                            ) : entry.changes.map((change, changeIndex) => (
+                              <div key={`${entry.id}-${change.field}-${changeIndex}`} className="rounded-xl bg-muted/50 px-3 py-2 text-sm">
+                                <div className="mb-1 text-xs font-medium text-muted-foreground">{change.label}</div>
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <span className="line-through opacity-60">{change.before || "Не указано"}</span>
+                                  <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
+                                  <span className="font-medium">{change.after || "Не указано"}</span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
                         </div>
                       ))
                     )}

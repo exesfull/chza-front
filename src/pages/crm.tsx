@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ComponentType } from "react"
+import { useEffect, useMemo, useRef, useState, type ComponentType } from "react"
 import { Link, useNavigate, useParams } from "react-router-dom"
 import {
   BarChart3,
@@ -23,6 +23,7 @@ import {
 import { useCrm, type CrmDetail, type CrmLead } from "@/hooks/use-crm"
 import { useTeamMembers } from "@/hooks/use-team-members"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -121,6 +122,9 @@ export function CrmPage() {
   const [leadMessageDraft, setLeadMessageDraft] = useState("")
   const [leadMessageSending, setLeadMessageSending] = useState(false)
   const [draggedLeadId, setDraggedLeadId] = useState("")
+  const [leadProductPickerOpen, setLeadProductPickerOpen] = useState(false)
+  const [leadProductPickerSearch, setLeadProductPickerSearch] = useState("")
+  const [leadProductPickerSelected, setLeadProductPickerSelected] = useState<string[]>([])
   const [contactSearch, setContactSearch] = useState("")
   const [stageEditorOpen, setStageEditorOpen] = useState(false)
   const [stageEditorSaving, setStageEditorSaving] = useState(false)
@@ -189,6 +193,8 @@ export function CrmPage() {
   const [documentUploadLoading, setDocumentUploadLoading] = useState(false)
   const [documentUploadLeadId, setDocumentUploadLeadId] = useState("")
   const [financeForm, setFinanceForm] = useState({ category: "", date: "", amount: "", from_contact_id: "", to_contact_id: "", note: "", lead_id: "" })
+  const leadAutoSaveSnapshotRef = useRef("")
+  const leadAutoSaveTimerRef = useRef<number | null>(null)
 
   const stages = selectedCrm?.stages || []
   const leads = selectedCrm?.leads || []
@@ -278,12 +284,24 @@ export function CrmPage() {
     () => finances.filter((finance) => finance.lead_id === selectedLead?.id),
     [finances, selectedLead?.id]
   )
+  const availableLeadProducts = useMemo(() => {
+    const q = leadProductPickerSearch.trim().toLowerCase()
+    return products.filter((product) => {
+      if (!q) return true
+      return `${product.name} ${product.description || ""}`.toLowerCase().includes(q)
+    })
+  }, [leadProductPickerSearch, products])
 
   useEffect(() => {
     if (!selectedLead || !crmId) {
       setSelectedLeadHistory([])
       setSelectedLeadMessages([])
       setSelectedLeadTab("info")
+      leadAutoSaveSnapshotRef.current = ""
+      if (leadAutoSaveTimerRef.current) {
+        window.clearTimeout(leadAutoSaveTimerRef.current)
+        leadAutoSaveTimerRef.current = null
+      }
       return
     }
 
@@ -303,6 +321,81 @@ export function CrmPage() {
       cancelled = true
     }
   }, [crmId, getLeadHistory, listLeadMessages, selectedLead])
+
+  useEffect(() => {
+    if (!crmId || !selectedLead) return
+
+    const snapshot = JSON.stringify({
+      title: selectedLead.title,
+      description: selectedLead.description || "",
+      stage_id: selectedLead.stage_id || "",
+      responsible_user_id: selectedLead.responsible_user_id || "",
+      discount_type: selectedLead.discount_type || "",
+      discount_value: selectedLead.discount_value ?? 0,
+      contact_ids: selectedLead.contacts.map((contact) => contact.id),
+      product_items: selectedLead.products.map((item) => ({
+        product_id: item.product_id,
+        quantity: item.quantity,
+        discount_type: item.discount_type,
+        discount_value: item.discount_value ?? 0,
+      })),
+    })
+
+    if (!leadAutoSaveSnapshotRef.current) {
+      leadAutoSaveSnapshotRef.current = snapshot
+      return
+    }
+
+    if (snapshot === leadAutoSaveSnapshotRef.current) return
+
+    if (leadAutoSaveTimerRef.current) {
+      window.clearTimeout(leadAutoSaveTimerRef.current)
+    }
+
+    leadAutoSaveTimerRef.current = window.setTimeout(() => {
+      void updateLead(crmId, selectedLead.id, {
+        title: selectedLead.title,
+        description: selectedLead.description,
+        stage_id: selectedLead.stage_id,
+        responsible_user_id: selectedLead.responsible_user_id,
+        discount_type: selectedLead.discount_type,
+        discount_value: selectedLead.discount_value,
+        contact_ids: JSON.stringify(selectedLead.contacts.map((contact) => contact.id)),
+        product_items: JSON.stringify(selectedLead.products.map((item) => ({
+          product_id: item.product_id,
+          quantity: item.quantity,
+          discount_type: item.discount_type,
+          discount_value: item.discount_value ?? 0,
+        }))),
+      }).then((savedLead) => {
+        if (savedLead) {
+          setSelectedLead(savedLead)
+          leadAutoSaveSnapshotRef.current = JSON.stringify({
+            title: savedLead.title,
+            description: savedLead.description || "",
+            stage_id: savedLead.stage_id || "",
+            responsible_user_id: savedLead.responsible_user_id || "",
+            discount_type: savedLead.discount_type || "",
+            discount_value: savedLead.discount_value ?? 0,
+            contact_ids: savedLead.contacts.map((contact) => contact.id),
+            product_items: savedLead.products.map((item) => ({
+              product_id: item.product_id,
+              quantity: item.quantity,
+              discount_type: item.discount_type,
+              discount_value: item.discount_value ?? 0,
+            })),
+          })
+        }
+      })
+    }, 700)
+
+    return () => {
+      if (leadAutoSaveTimerRef.current) {
+        window.clearTimeout(leadAutoSaveTimerRef.current)
+        leadAutoSaveTimerRef.current = null
+      }
+    }
+  }, [crmId, selectedLead, updateLead])
 
   const refreshDetail = async () => {
     if (!crmId) return
@@ -497,6 +590,31 @@ export function CrmPage() {
     } finally {
       setProductEditLoading(false)
     }
+  }
+
+  const handleAddSelectedLeadProducts = () => {
+    if (!selectedLead) return
+    const currentIds = new Set(selectedLead.products.map((item) => item.product_id))
+    const additions = leadProductPickerSelected
+      .map((productId) => products.find((product) => product.id === productId))
+      .filter((product): product is NonNullable<typeof product> => Boolean(product))
+      .filter((product) => !currentIds.has(product.id))
+      .map((product) => ({
+        id: `${product.id}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        product_id: product.id,
+        product_name: product.name,
+        quantity: 1,
+        price: product.price,
+        discount_type: null,
+        discount_value: 0,
+      }))
+
+    if (additions.length > 0) {
+      setSelectedLead({ ...selectedLead, products: [...selectedLead.products, ...additions] })
+    }
+    setLeadProductPickerOpen(false)
+    setLeadProductPickerSelected([])
+    setLeadProductPickerSearch("")
   }
 
   const handleCreateCategory = async () => {
@@ -1113,7 +1231,14 @@ export function CrmPage() {
                     <div className="rounded-2xl border p-4">
                       <div className="mb-3 flex items-center justify-between gap-2">
                         <div className="font-semibold">Товары лида</div>
-                        <Button size="sm" variant="outline" onClick={() => setCreateProductOpen(true)}>Создать товар</Button>
+                        <div className="flex gap-2">
+                          <Button size="sm" variant="outline" onClick={() => setCreateProductOpen(true)}>Создать товар</Button>
+                          <Button size="sm" variant="outline" onClick={() => {
+                            setLeadProductPickerSelected([])
+                            setLeadProductPickerSearch("")
+                            setLeadProductPickerOpen(true)
+                          }}>Добавить товары</Button>
+                        </div>
                       </div>
                       <div className="space-y-2">
                         {selectedLead.products.map((item) => (
@@ -1166,21 +1291,6 @@ export function CrmPage() {
                           </div>
                         </div>
                       ))}
-                        <Select value="" onValueChange={(value) => {
-                          const product = products.find((item) => item.id === value)
-                          if (!product) return
-                          if (!selectedLead.products.some((item) => item.product_id === product.id)) {
-                            setSelectedLead({
-                              ...selectedLead,
-                              products: [...selectedLead.products, { id: `${product.id}-${Date.now()}`, product_id: product.id, product_name: product.name, quantity: 1, price: product.price, discount_type: null, discount_value: 0 }],
-                            })
-                          }
-                        }}>
-                          <SelectTrigger><SelectValue placeholder="Добавить товар из CRM" /></SelectTrigger>
-                          <SelectContent>
-                            {products.map((product) => <SelectItem key={product.id} value={product.id}>{product.name}</SelectItem>)}
-                          </SelectContent>
-                        </Select>
                       </div>
                     </div>
 
@@ -1229,43 +1339,16 @@ export function CrmPage() {
                   </div>
                 )}
               </div>
-              {selectedLeadTab !== "chat" && (
-                <div className="border-t p-4">
-                  <div className="flex items-center justify-between gap-2">
-                    <Button variant="destructive" onClick={async () => {
-                      await deleteLead(activeCrm.id, selectedLead.id)
-                      setSelectedLead(null)
-                      await refreshDetail()
-                    }}>Удалить</Button>
-                    <div className="flex gap-2">
-                      <Button variant="outline" onClick={() => setSelectedLead(null)}>Закрыть</Button>
-                      <Button onClick={async () => {
-                        if (!crmId || !selectedLead) return
-                        await updateLead(crmId, selectedLead.id, {
-                          title: selectedLead.title,
-                          description: selectedLead.description,
-                          stage_id: selectedLead.stage_id,
-                          responsible_user_id: selectedLead.responsible_user_id,
-                          amount: selectedLead.amount,
-                          discount_type: selectedLead.discount_type,
-                          discount_value: selectedLead.discount_value,
-                          contact_ids: JSON.stringify(selectedLead.contacts.map((contact) => contact.id)),
-                          product_items: JSON.stringify(selectedLead.products.map((item) => ({
-                            product_id: item.product_id,
-                            quantity: item.quantity,
-                            price: item.price,
-                            discount_type: item.discount_type,
-                            discount_value: item.discount_value,
-                          }))),
-                        })
-                        await refreshDetail()
-                      }}>
-                        Сохранить
-                      </Button>
-                    </div>
-                  </div>
+              <div className="border-t p-4">
+                <div className="flex items-center justify-between gap-2">
+                  <Button variant="destructive" onClick={async () => {
+                    await deleteLead(activeCrm.id, selectedLead.id)
+                    setSelectedLead(null)
+                    await refreshDetail()
+                  }}>Удалить</Button>
+                  <Button variant="outline" onClick={() => setSelectedLead(null)}>Закрыть</Button>
                 </div>
-              )}
+              </div>
             </div>
           )}
         </SheetContent>
@@ -1593,6 +1676,73 @@ export function CrmPage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateProductOpen(false)}>Отмена</Button>
             <Button onClick={() => void handleCreateProduct()}>Создать</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={leadProductPickerOpen}
+        onOpenChange={(open) => {
+          setLeadProductPickerOpen(open)
+          if (!open) {
+            setLeadProductPickerSearch("")
+            setLeadProductPickerSelected([])
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-[760px]">
+          <DialogHeader>
+            <DialogTitle>Добавить товары в лид</DialogTitle>
+            <DialogDescription>Можно выбрать несколько товаров сразу. Цена в лиде берётся из карточки товара.</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-2">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                placeholder="Поиск товара"
+                className="pl-9"
+                value={leadProductPickerSearch}
+                onChange={(e) => setLeadProductPickerSearch(e.target.value)}
+              />
+            </div>
+            <div className="max-h-[50vh] space-y-2 overflow-y-auto pr-1">
+              {availableLeadProducts.map((product) => {
+                const alreadyAdded = selectedLead?.products.some((item) => item.product_id === product.id) ?? false
+                const checked = alreadyAdded || leadProductPickerSelected.includes(product.id)
+                return (
+                  <button
+                    key={product.id}
+                    type="button"
+                    disabled={alreadyAdded}
+                    onClick={() => {
+                      if (alreadyAdded) return
+                      setLeadProductPickerSelected((prev) => prev.includes(product.id) ? prev.filter((id) => id !== product.id) : [...prev, product.id])
+                    }}
+                    className={`flex w-full items-start gap-3 rounded-2xl border p-4 text-left transition-colors ${checked ? "border-primary bg-primary/5" : "hover:bg-muted/40"} ${alreadyAdded ? "opacity-60" : ""}`}
+                  >
+                    <Checkbox checked={checked} disabled={alreadyAdded} />
+                    <div className="min-w-0 flex-1">
+                      <div className="font-medium">{product.name}</div>
+                      <div className="mt-1 text-sm text-muted-foreground">{product.description || "Без описания"}</div>
+                      <div className="mt-2 flex flex-wrap gap-2 text-xs">
+                        <Badge variant="secondary">{formatMoney(product.price)}</Badge>
+                        <Badge variant="outline">Себестоимость: {formatMoney(product.cost_price)}</Badge>
+                        {alreadyAdded && <Badge variant="default">Уже добавлен</Badge>}
+                      </div>
+                    </div>
+                  </button>
+                )
+              })}
+              {availableLeadProducts.length === 0 && (
+                <div className="rounded-2xl border border-dashed p-6 text-center text-sm text-muted-foreground">
+                  Товары не найдены
+                </div>
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setLeadProductPickerOpen(false)}>Отмена</Button>
+            <Button onClick={handleAddSelectedLeadProducts} disabled={leadProductPickerSelected.length === 0}>Добавить выбранные</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

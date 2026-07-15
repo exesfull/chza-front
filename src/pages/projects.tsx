@@ -1,17 +1,11 @@
-import { useState, useEffect } from "react"
-import { Link } from "react-router-dom"
-import { Search, Plus, MoreHorizontal, Calendar, Users, ListTodo, X } from "lucide-react"
-import { Input } from "@/components/ui/input"
+import { useEffect, useMemo, useState } from "react"
+import { useNavigate, useParams } from "react-router-dom"
+import { Calendar, Image as ImageIcon, Link2, ListTodo, Plus, Search } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
+import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Checkbox } from "@/components/ui/checkbox"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import {
   Dialog,
   DialogContent,
@@ -20,69 +14,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { useProjects } from "@/hooks/use-projects"
+import { useTeamMembers } from "@/hooks/use-team-members"
+import { useUser } from "@/hooks/use-user"
 
-interface ProjectCard {
-  id: string
-  name: string
-  description: string
-  image: string
-  taskLists: number
-  members: string[]
-  lastUpdated: string
-}
+function formatDate(dateStr: string | null): string {
+  if (!dateStr) return "Только что"
+  const date = new Date(dateStr.replace(" ", "T"))
+  if (Number.isNaN(date.getTime())) return "Только что"
 
-const sampleProjects: ProjectCard[] = [
-  {
-    id: "1",
-    name: "Разработка сайта",
-    description: "Создание корпоративного сайта с нуля",
-    image: "https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=400&h=200&fit=crop",
-    taskLists: 5,
-    members: ["Алексей", "Мария", "Дмитрий"],
-    lastUpdated: "2026-04-07T15:30:00",
-  },
-  {
-    id: "2",
-    name: "Мобильное приложение",
-    description: "Приложение для iOS и Android",
-    image: "https://images.unsplash.com/photo-1512941937669-90a1b58e7e9c?w=400&h=200&fit=crop",
-    taskLists: 3,
-    members: ["Елена", "Иван"],
-    lastUpdated: "2026-04-06T10:00:00",
-  },
-  {
-    id: "3",
-    name: "Маркетинг Q2",
-    description: "Маркетинговая стратегия на второй квартал",
-    image: "https://images.unsplash.com/photo-1533750349088-cd871a92f312?w=400&h=200&fit=crop",
-    taskLists: 8,
-    members: ["Ольга", "Сергей", "Анна", "Павел"],
-    lastUpdated: "2026-04-08T09:15:00",
-  },
-  {
-    id: "4",
-    name: "Редизайн Dashboard",
-    description: "Обновление интерфейса панели управления",
-    image: "https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=400&h=200&fit=crop",
-    taskLists: 4,
-    members: ["Алексей", "Мария"],
-    lastUpdated: "2026-04-05T18:45:00",
-  },
-  {
-    id: "5",
-    name: "API Интеграция",
-    description: "Интеграция с внешними сервисами",
-    image: "https://images.unsplash.com/photo-1558494949-ef010cbdcc31?w=400&h=200&fit=crop",
-    taskLists: 2,
-    members: ["Дмитрий"],
-    lastUpdated: "2026-04-08T12:00:00",
-  },
-]
-
-function formatDate(dateStr: string): string {
-  const date = new Date(dateStr)
-  const now = new Date()
-  const diffMs = now.getTime() - date.getTime()
+  const diffMs = Date.now() - date.getTime()
   const diffHours = Math.floor(diffMs / (1000 * 60 * 60))
   const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
 
@@ -93,63 +34,92 @@ function formatDate(dateStr: string): string {
   return date.toLocaleDateString("ru-RU", { day: "numeric", month: "short" })
 }
 
-// Sample team members
-const teamMembers = [
-  { id: "1", name: "Алексей Иванов", email: "alexey@example.com" },
-  { id: "2", name: "Мария Петрова", email: "maria@example.com" },
-  { id: "3", name: "Дмитрий Сидоров", email: "dmitry@example.com" },
-  { id: "4", name: "Елена Козлова", email: "elena@example.com" },
-  { id: "5", name: "Иван Смирнов", email: "ivan@example.com" },
-  { id: "6", name: "Ольга Новикова", email: "olga@example.com" },
-  { id: "7", name: "Сергей Волков", email: "sergey@example.com" },
-  { id: "8", name: "Анна Соколова", email: "anna@example.com" },
-]
-
 export function ProjectsPage() {
+  const { teamLogin } = useParams()
+  const navigate = useNavigate()
+  const { projects, loading, createProject } = useProjects(teamLogin)
+  const { members, loading: membersLoading } = useTeamMembers(teamLogin)
+  const { user } = useUser()
   const [search, setSearch] = useState("")
-  const [projects] = useState<ProjectCard[]>(sampleProjects)
   const [createOpen, setCreateOpen] = useState(false)
-  const [newProjectName, setNewProjectName] = useState("")
-  const [newProjectDesc, setNewProjectDesc] = useState("")
+  const [name, setName] = useState("")
+  const [description, setDescription] = useState("")
   const [selectedMembers, setSelectedMembers] = useState<string[]>([])
-  const [memberSearch, setMemberSearch] = useState("")
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState("")
 
   useEffect(() => {
     document.title = "Проекты"
   }, [])
 
-  const filteredMembers = teamMembers.filter((m) =>
-    m.name.toLowerCase().includes(memberSearch.toLowerCase())
+  useEffect(() => {
+    if (!createOpen) {
+      return
+    }
+
+    const creatorId = user?.id
+    setSelectedMembers(creatorId ? [creatorId] : [])
+  }, [createOpen, user])
+
+  const filteredProjects = useMemo(
+    () =>
+      projects.filter((project) =>
+        `${project.name} ${project.description || ""}`
+          .toLowerCase()
+          .includes(search.toLowerCase())
+      ),
+    [projects, search]
   )
 
-  const toggleMember = (id: string) => {
-    setSelectedMembers((prev) =>
-      prev.includes(id) ? prev.filter((m) => m !== id) : [...prev, id]
-    )
+  const openProject = (projectId: string) => {
+    if (!teamLogin) return
+    navigate(`/teams/${teamLogin}/projects/${projectId}`)
   }
 
-  const handleCreateProject = () => {
-    // TODO: API call
-    setCreateOpen(false)
-    setNewProjectName("")
-    setNewProjectDesc("")
-    setSelectedMembers([])
-    setMemberSearch("")
-  }
+  const handleCreate = async () => {
+    const trimmedName = name.trim()
+    if (!trimmedName) {
+      setError("Название проекта обязательно")
+      return
+    }
 
-  const filtered = projects.filter((p) =>
-    p.name.toLowerCase().includes(search.toLowerCase()) ||
-    p.description.toLowerCase().includes(search.toLowerCase())
-  )
+    setSubmitting(true)
+    setError("")
+
+    try {
+      const project = await createProject({
+        name: trimmedName,
+        description: description.trim(),
+        member_ids: JSON.stringify(selectedMembers.length > 0 ? selectedMembers : user?.id ? [user.id] : []),
+      })
+
+      if (!project) {
+        setError("Не удалось создать проект")
+        return
+      }
+
+      setCreateOpen(false)
+      setName("")
+      setDescription("")
+      setSelectedMembers(user?.id ? [user.id] : [])
+      if (teamLogin) {
+        navigate(`/teams/${teamLogin}/projects/${project.id}`)
+      }
+    } catch (createError) {
+      console.error("Failed to create project:", createError)
+      setError("Не удалось создать проект")
+    } finally {
+      setSubmitting(false)
+    }
+  }
 
   return (
     <div className="flex flex-col gap-6 p-4 lg:p-6">
-      {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold">Проекты</h1>
           <p className="text-sm text-muted-foreground">
-            {projects.length} {projects.length === 1 ? "проект" : projects.length < 5 ? "проекта" : "проектов"}
+            {loading ? "Загрузка..." : `${projects.length} ${projects.length === 1 ? "проект" : projects.length < 5 ? "проекта" : "проектов"}`}
           </p>
         </div>
         <Button onClick={() => setCreateOpen(true)}>
@@ -158,7 +128,6 @@ export function ProjectsPage() {
         </Button>
       </div>
 
-      {/* Search */}
       <div className="relative max-w-sm">
         <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
         <Input
@@ -169,151 +138,156 @@ export function ProjectsPage() {
         />
       </div>
 
-      {/* Projects grid */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {filtered.map((project) => (
-          <Link
-            key={project.id}
-            to={`/teams/test/projects/${project.id}`}
-            className="group relative overflow-hidden rounded-xl border bg-card transition-all hover:shadow-md cursor-pointer"
-          >
-            {/* Card body with background image */}
-            <div className="relative h-36 overflow-hidden">
-              <img
-                src={project.image}
-                alt={project.name}
-                className="absolute inset-0 h-full w-full object-cover transition-transform group-hover:scale-105"
-              />
-              {/* Frosted glass overlay for title */}
-              <div className="absolute left-3 top-3 rounded-lg px-3 py-1.5 backdrop-blur-md bg-white/30 dark:bg-black/40">
-                <h3 className="text-sm font-semibold text-foreground">{project.name}</h3>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        {loading ? (
+          Array.from({ length: 6 }).map((_, index) => (
+            <div key={index} className="h-64 animate-pulse rounded-2xl border bg-muted/30" />
+          ))
+        ) : filteredProjects.length > 0 ? (
+          filteredProjects.map((project) => (
+            <button
+              key={project.id}
+              type="button"
+              onClick={() => openProject(project.id)}
+              className="group overflow-hidden rounded-2xl border bg-card text-left transition-all hover:-translate-y-0.5 hover:shadow-lg"
+            >
+              <div className="relative h-40 overflow-hidden bg-muted">
+                {project.img_url ? (
+                  <img
+                    src={project.img_url}
+                    alt={project.name}
+                    className="h-full w-full object-cover transition-transform group-hover:scale-105"
+                  />
+                ) : (
+                  <div className="flex h-full items-center justify-center bg-gradient-to-br from-slate-100 to-slate-200">
+                    <ImageIcon className="size-10 text-muted-foreground" />
+                  </div>
+                )}
+                <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent p-4">
+                  <h3 className="line-clamp-1 text-lg font-semibold text-white">{project.name}</h3>
+                  <p className="line-clamp-2 text-sm text-white/80">
+                    {project.description || "Без описания"}
+                  </p>
+                </div>
               </div>
-              {/* Three-dot menu */}
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <button className="absolute right-3 top-3 flex size-8 items-center justify-center rounded-full bg-black/20 backdrop-blur-sm text-white opacity-0 transition-opacity group-hover:opacity-100 hover:bg-black/40">
-                    <MoreHorizontal className="size-4" />
-                  </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem>Открыть</DropdownMenuItem>
-                  <DropdownMenuItem>Настройки</DropdownMenuItem>
-                  <DropdownMenuItem className="text-destructive">Удалить</DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
-
-            {/* Description area below image */}
-            <div className="px-4 py-3">
-              <p className="text-sm text-muted-foreground line-clamp-2">{project.description}</p>
-            </div>
-
-            {/* Footer with badges */}
-            <div className="flex flex-wrap items-center gap-2 border-t px-4 py-2.5">
-              <Badge variant="secondary" className="flex items-center gap-1 text-xs">
-                <ListTodo className="size-3" />
-                {project.taskLists}
-              </Badge>
-              <Badge variant="secondary" className="flex items-center gap-1 text-xs">
-                <Users className="size-3" />
-                {project.members.length}
-              </Badge>
-              <Badge variant="secondary" className="flex items-center gap-1 text-xs ml-auto">
-                <Calendar className="size-3" />
-                {formatDate(project.lastUpdated)}
-              </Badge>
-            </div>
-          </Link>
-        ))}
+              <div className="flex items-center gap-3 border-t px-4 py-3 text-sm text-muted-foreground">
+                <span className="flex items-center gap-1">
+                  <ListTodo className="size-4" />
+                  {project.task_lists_count}
+                </span>
+                <span className="flex items-center gap-1">
+                  <Link2 className="size-4" />
+                  {project.links_count}
+                </span>
+                <span className="ml-auto flex items-center gap-1">
+                  <Calendar className="size-4" />
+                  {formatDate(project.updated_at)}
+                </span>
+              </div>
+            </button>
+          ))
+        ) : (
+          <div className="col-span-full rounded-2xl border border-dashed p-10 text-center text-muted-foreground">
+            <ImageIcon className="mx-auto mb-3 size-10" />
+            <p>Пока нет проектов</p>
+          </div>
+        )}
       </div>
 
-      {filtered.length === 0 && (
-        <div className="flex flex-col items-center justify-center py-12 text-center text-muted-foreground">
-          <Search className="mb-2 size-8 opacity-50" />
-          <p>Ничего не найдено</p>
-        </div>
-      )}
-
-      {/* Create project dialog */}
-      <Dialog open={createOpen} onOpenChange={(open) => { if (!open) { setCreateOpen(false); setNewProjectName(""); setNewProjectDesc(""); setSelectedMembers([]); setMemberSearch("") } }}>
-        <DialogContent className="sm:max-w-[480px] max-h-[90vh] overflow-y-auto">
+      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+        <DialogContent className="sm:max-w-[520px]">
           <DialogHeader>
             <DialogTitle>Создать проект</DialogTitle>
             <DialogDescription>Заполните информацию о новом проекте</DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-4 py-2">
-            {/* Name */}
             <div className="flex flex-col gap-2">
               <label className="text-sm font-medium">Название *</label>
               <Input
                 placeholder="Название проекта"
-                value={newProjectName}
-                onChange={(e) => setNewProjectName(e.target.value)}
+                value={name}
+                onChange={(e) => setName(e.target.value)}
                 autoFocus
               />
             </div>
-            {/* Description */}
             <div className="flex flex-col gap-2">
               <label className="text-sm font-medium">Описание</label>
               <Textarea
                 placeholder="Описание проекта"
-                value={newProjectDesc}
-                onChange={(e) => setNewProjectDesc(e.target.value)}
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
                 rows={3}
               />
             </div>
-            {/* Members */}
             <div className="flex flex-col gap-2">
-              <label className="text-sm font-medium">Участники</label>
-              <Input
-                placeholder="Поиск участников..."
-                value={memberSearch}
-                onChange={(e) => setMemberSearch(e.target.value)}
-                className="h-8 text-sm"
-              />
-              {/* Selected members badges */}
-              {selectedMembers.length > 0 && (
-                <div className="flex flex-wrap gap-1.5 mt-1">
-                  {selectedMembers.map((id) => {
-                    const member = teamMembers.find((m) => m.id === id)
-                    if (!member) return null
+              <label className="text-sm font-medium">Участники проекта</label>
+              <div className="grid gap-2 max-h-64 overflow-y-auto rounded-xl border p-2">
+                {membersLoading ? (
+                  <div className="p-4 text-sm text-muted-foreground">Загрузка участников...</div>
+                ) : members.length > 0 ? (
+                  members.map((member) => {
+                    const fullName = `${member.last_name} ${member.first_name}`.trim()
+                    const isCreator = member.id === user?.id
+                    const checked = selectedMembers.includes(member.id)
+
                     return (
-                      <Badge key={id} variant="secondary" className="flex items-center gap-1 pr-1">
-                        {member.name}
-                        <button onClick={() => toggleMember(id)} className="ml-0.5 hover:text-destructive">
-                          <X className="size-3" />
-                        </button>
-                      </Badge>
+                      <label
+                        key={member.id}
+                        className="flex cursor-pointer items-center gap-3 rounded-xl border px-3 py-2 transition-colors hover:bg-muted/40"
+                      >
+                        <Checkbox
+                          checked={checked}
+                          disabled={isCreator}
+                          onCheckedChange={(value) => {
+                            const nextChecked = Boolean(value)
+                            setSelectedMembers((current) => {
+                              if (isCreator) {
+                                return current.includes(member.id) ? current : [...current, member.id]
+                              }
+                              if (nextChecked) {
+                                return current.includes(member.id) ? current : [...current, member.id]
+                              }
+                              return current.filter((id) => id !== member.id)
+                            })
+                          }}
+                        />
+                        <Avatar className="size-9 rounded-lg">
+                          <AvatarImage src={member.img_url} alt={fullName} />
+                          <AvatarFallback className="rounded-lg text-xs">
+                            {fullName.slice(0, 2).toUpperCase() || "П"}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="truncate text-sm font-medium">{fullName || "Пользователь"}</span>
+                            {isCreator && (
+                              <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
+                                Глава
+                              </span>
+                            )}
+                          </div>
+                          <p className="truncate text-xs text-muted-foreground">{member.email}</p>
+                        </div>
+                      </label>
                     )
-                  })}
-                </div>
-              )}
-              {/* Members list */}
-              <div className="max-h-40 overflow-y-auto rounded-md border">
-                {filteredMembers.map((member) => (
-                  <label
-                    key={member.id}
-                    className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-muted cursor-pointer"
-                  >
-                    <Checkbox
-                      checked={selectedMembers.includes(member.id)}
-                      onCheckedChange={() => toggleMember(member.id)}
-                    />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{member.name}</p>
-                      <p className="text-xs text-muted-foreground">{member.email}</p>
-                    </div>
-                  </label>
-                ))}
-                {filteredMembers.length === 0 && (
-                  <p className="px-3 py-2 text-sm text-muted-foreground">Не найдено</p>
+                  })
+                ) : (
+                  <div className="p-4 text-sm text-muted-foreground">В команде пока нет участников</div>
                 )}
               </div>
+              <p className="text-xs text-muted-foreground">
+                Глава проекта назначается автоматически на создателя. Остальных участников можно выбрать здесь.
+              </p>
             </div>
+            {error && <p className="text-sm text-destructive">{error}</p>}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => { setCreateOpen(false); setNewProjectName(""); setNewProjectDesc(""); setSelectedMembers([]); setMemberSearch("") }}>Отмена</Button>
-            <Button onClick={handleCreateProject} disabled={!newProjectName.trim()}>Создать</Button>
+            <Button variant="outline" onClick={() => setCreateOpen(false)}>
+              Отмена
+            </Button>
+            <Button onClick={handleCreate} disabled={submitting || !name.trim()}>
+              {submitting ? "Создание..." : "Создать"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

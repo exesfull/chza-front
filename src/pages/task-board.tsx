@@ -1,7 +1,9 @@
 import { useState, useCallback, useEffect, useRef } from "react"
-import { useParams, Link } from "react-router-dom"
+import { useNavigate, useParams, Link, useSearchParams } from "react-router-dom"
 import { ChevronRight, Plus, LayoutGrid, Loader2, Archive, Trash2, Settings, Pencil, ListTodo, Table } from "lucide-react"
 import { useTaskLists } from "@/hooks/use-task-lists"
+import { useProjects } from "@/hooks/use-projects"
+import { useTeamMembers } from "@/hooks/use-team-members"
 import { api } from "@/lib/api"
 import type { TaskColumn } from "@/types/task"
 import { COLUMN_COLORS } from "@/types/task"
@@ -10,6 +12,7 @@ import { Input } from "@/components/ui/input"
 import { Progress } from "@/components/ui/progress"
 import { KanbanColumn } from "@/components/kanban-column"
 import { TableView } from "@/components/table-view"
+import { TaskDetailSheet, TaskWidgetDialog } from "@/components/task-detail-sheet"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   Dialog,
@@ -27,6 +30,7 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu"
 import { cn } from "@/lib/utils"
+import type { TaskCardData } from "@/hooks/use-task-lists"
 
 const TEMPLATE_COLS = [
   { name: "Обсуждение", color: COLUMN_COLORS[5].value },
@@ -36,7 +40,12 @@ const TEMPLATE_COLS = [
 ]
 
 export function TaskBoardPage() {
-  const { teamLogin, listId } = useParams()
+  const navigate = useNavigate()
+  const { teamLogin, listId, projectId: routeProjectId } = useParams()
+  const [searchParams] = useSearchParams()
+  const projectId = routeProjectId ?? searchParams.get("project_id")
+  const { getProject } = useProjects(teamLogin, { autoLoad: false })
+  const { members: teamMembers } = useTeamMembers(teamLogin)
   const {
     getListInfo,
     updateListColsSort,
@@ -57,11 +66,20 @@ export function TaskBoardPage() {
     moveTask,
     deleteAllTasksInColumn,
     archiveAllTasksInColumn,
-  } = useTaskLists(teamLogin)
+    getTaskCard,
+    sendTaskMessage,
+    editTaskMessage,
+    editTaskAttachment,
+    deleteTaskMessage,
+    deleteTaskAttachment,
+    upsertTaskWidget,
+    deleteTaskWidget,
+  } = useTaskLists(teamLogin, projectId)
 
   const [listInfo, setListInfo] = useState<{ id: string; name: string; description: string; view_type: string } | null>(null)
   const [columns, setColumns] = useState<TaskColumn[]>([])
   const [loading, setLoading] = useState(true)
+  const [projectName, setProjectName] = useState("")
 
   const [creatingColumn, setCreatingColumn] = useState(false)
   const [newColumnName, setNewColumnName] = useState("")
@@ -70,6 +88,13 @@ export function TaskBoardPage() {
   const [taskDragOverColId, setTaskDragOverColId] = useState<string | null>(null)
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
   const [confirmTaskId, setConfirmTaskId] = useState<string | null>(null)
+  const [taskSheetOpen, setTaskSheetOpen] = useState(false)
+  const [taskSheetLoading, setTaskSheetLoading] = useState(false)
+  const [widgetDialogOpen, setWidgetDialogOpen] = useState(false)
+  const [widgetDialogTaskId, setWidgetDialogTaskId] = useState<string | null>(null)
+  const [taskSheetInitialTab, setTaskSheetInitialTab] = useState<"chat" | "info" | "history">("chat")
+  const [activeTaskId, setActiveTaskId] = useState<string | null>(null)
+  const [activeTaskData, setActiveTaskData] = useState<TaskCardData | null>(null)
   const [listUpdatedAt, setListUpdatedAt] = useState<string | null>(null)
   const [isUpdating, setIsUpdating] = useState(false)
   const [pollInterval, setPollInterval] = useState(3000)
@@ -109,6 +134,25 @@ export function TaskBoardPage() {
     })
   }, [listId, getListInfo, fetchTasks])
 
+  useEffect(() => {
+    let cancelled = false
+
+    if (!projectId) {
+      setProjectName("")
+      return
+    }
+
+    getProject(projectId).then((project) => {
+      if (!cancelled) {
+        setProjectName(project?.name || "")
+      }
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [projectId, getProject])
+
   // Update title when listInfo changes
   useEffect(() => {
     if (listInfo?.name) {
@@ -121,7 +165,8 @@ export function TaskBoardPage() {
     if (!listId || !listUpdatedAt || isUpdating) return
     const timer = setInterval(async () => {
       try {
-        const { data } = await api.get(`/main/task/getUpdatedTimeOnList/?team_login=${teamLogin}&list_id=${listId}`)
+        const projectQuery = projectId ? `&project_id=${encodeURIComponent(projectId)}` : ""
+        const { data } = await api.get(`/main/task/getUpdatedTimeOnList/?team_login=${teamLogin}&list_id=${listId}${projectQuery}`)
         if (data.status && data.data?.updated_at) {
           if (data.data.updated_at !== listUpdatedAt) {
             // List has been updated - refresh everything
@@ -150,7 +195,7 @@ export function TaskBoardPage() {
       }
     }, pollInterval)
     return () => clearInterval(timer)
-  }, [listId, listUpdatedAt, pollInterval, consecutiveMatches, isUpdating, teamLogin, getListInfo, fetchTasks])
+  }, [listId, listUpdatedAt, pollInterval, consecutiveMatches, isUpdating, teamLogin, projectId, getListInfo, fetchTasks])
 
   const handleAddColumn = async () => {
     if (!newColumnName.trim() || !listId) return
@@ -280,6 +325,87 @@ export function TaskBoardPage() {
     setSelectedTaskId(null)
   }, [])
 
+  const handleOpenTask = useCallback((taskId: string) => {
+    setSelectedTaskId(taskId)
+    setActiveTaskId(taskId)
+    setTaskSheetInitialTab("chat")
+    setTaskSheetOpen(true)
+  }, [])
+
+  const handleOpenWidgetForTask = useCallback((taskId: string) => {
+    setSelectedTaskId(taskId)
+    setWidgetDialogTaskId(taskId)
+    setWidgetDialogOpen(true)
+  }, [])
+
+  useEffect(() => {
+    if (!taskSheetOpen || !listId || !activeTaskId) {
+      if (!taskSheetOpen) {
+        setActiveTaskId(null)
+        setActiveTaskData(null)
+      }
+      return
+    }
+
+    let cancelled = false
+    setTaskSheetLoading(true)
+    getTaskCard(listId, activeTaskId).then((data) => {
+      if (!cancelled) {
+        setActiveTaskData(data)
+      }
+    }).finally(() => {
+      if (!cancelled) {
+        setTaskSheetLoading(false)
+      }
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [taskSheetOpen, listId, activeTaskId, getTaskCard])
+
+  const handleSendTaskMessageWithFiles = useCallback(async (taskId: string, content: string, files?: File[]) => {
+    if (!listId) return null
+    const sent = await sendTaskMessage(listId, taskId, content, files)
+    if (sent && activeTaskId === taskId) {
+      const refreshed = await getTaskCard(listId, taskId)
+      if (refreshed) setActiveTaskData(refreshed)
+    }
+    return sent
+  }, [listId, sendTaskMessage, getTaskCard, activeTaskId])
+
+  useEffect(() => {
+    if (!taskSheetOpen || !listId || !activeTaskId) return
+    const timer = window.setInterval(async () => {
+      const refreshed = await getTaskCard(listId, activeTaskId)
+      if (refreshed) {
+        setActiveTaskData(refreshed)
+      }
+    }, 3000)
+    return () => window.clearInterval(timer)
+  }, [taskSheetOpen, listId, activeTaskId, getTaskCard])
+
+  const refreshActiveTask = useCallback(async (taskId: string) => {
+    if (!listId || activeTaskId !== taskId) return
+    const refreshed = await getTaskCard(listId, taskId)
+    if (refreshed) {
+      setActiveTaskData(refreshed)
+    }
+  }, [listId, activeTaskId, getTaskCard])
+
+  const refreshBoardAfterWidgetChange = useCallback(async (taskId: string) => {
+    if (!listId) return
+    await fetchTasks(listId)
+    await getListInfo(listId).then((info) => {
+      if (info) {
+        setListInfo(info.list)
+        setColumns(info.cols)
+        setListUpdatedAt(info.list.updated_at)
+      }
+    })
+    void refreshActiveTask(taskId)
+  }, [listId, fetchTasks, getListInfo, refreshActiveTask])
+
   // Global keyboard handler for selected tasks
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -356,19 +482,77 @@ export function TaskBoardPage() {
     )
   }
 
+  if (!listInfo) {
+    return (
+      <div className="flex flex-col gap-4 p-4 md:p-6">
+        <div className="flex shrink-0 items-center gap-2 border-b px-4 py-2 lg:px-6">
+          {projectId ? (
+            <>
+              <Link to={`/teams/${teamLogin}/projects`} className="text-sm text-muted-foreground hover:text-foreground">
+                Проекты
+              </Link>
+              <ChevronRight className="size-4 text-muted-foreground" />
+              <Link
+                to={`/teams/${teamLogin}/projects/${projectId}`}
+                className="text-sm text-muted-foreground hover:text-foreground"
+              >
+                {projectName || "Проект"}
+              </Link>
+              <ChevronRight className="size-4 text-muted-foreground" />
+            </>
+          ) : (
+            <>
+              <Link to={`/teams/${teamLogin}/tasks`} className="text-sm text-muted-foreground hover:text-foreground">
+                Задачи
+              </Link>
+              <ChevronRight className="size-4 text-muted-foreground" />
+            </>
+          )}
+          <span className="text-sm text-muted-foreground">Список не найден</span>
+        </div>
+        <div className="rounded-2xl border p-8 text-center">
+          <p className="font-medium">Список задач не найден или недоступен</p>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Проверьте, что этот список действительно существует в выбранном проекте.
+          </p>
+          {projectId ? (
+            <Button className="mt-4" onClick={() => navigate(`/teams/${teamLogin}/projects/${projectId}`)}>
+              Вернуться к проекту
+            </Button>
+          ) : (
+            <Button className="mt-4" onClick={() => navigate(`/teams/${teamLogin}/tasks`)}>
+              Вернуться к спискам
+            </Button>
+          )}
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="flex flex-col overflow-hidden">
       {/* Breadcrumbs */}
       <div className="flex shrink-0 items-center gap-2 border-b px-4 py-2 lg:px-6">
-        <Link to={`/teams/${teamLogin}/tasks`} className="text-sm text-muted-foreground hover:text-foreground">
-          Задачи
-        </Link>
-        <ChevronRight className="size-4 text-muted-foreground" />
-        {listInfo ? (
-          <span className="text-sm font-medium">{listInfo.name}</span>
+        {projectId ? (
+          <>
+            <Link to={`/teams/${teamLogin}/projects`} className="text-sm text-muted-foreground hover:text-foreground">
+              Проекты
+            </Link>
+            <ChevronRight className="size-4 text-muted-foreground" />
+            <Link to={`/teams/${teamLogin}/projects/${projectId}`} className="text-sm text-muted-foreground hover:text-foreground">
+              {projectName || "Проект"}
+            </Link>
+            <ChevronRight className="size-4 text-muted-foreground" />
+          </>
         ) : (
-          <span className="text-sm text-muted-foreground">Загрузка...</span>
+          <>
+            <Link to={`/teams/${teamLogin}/tasks`} className="text-sm text-muted-foreground hover:text-foreground">
+              Задачи
+            </Link>
+            <ChevronRight className="size-4 text-muted-foreground" />
+          </>
         )}
+        <span className="text-sm font-medium">{listInfo.name}</span>
       </div>
 
       {/* Board header with Add column button */}
@@ -501,6 +685,8 @@ export function TaskBoardPage() {
         <TableView
           columns={columns}
           tasks={tasks}
+          teamMembers={teamMembers}
+          onOpenTask={handleOpenTask}
           onToggleTask={(taskId) => {
             const task = tasks.find((t) => t.id === taskId)
             if (task && listId) toggleTask(listId, taskId, !!task.closed_at)
@@ -669,6 +855,9 @@ export function TaskBoardPage() {
                     }}
                     selectedTaskId={selectedTaskId}
                     onSelectTask={setSelectedTaskId}
+                    onOpenTask={handleOpenTask}
+                    onAddWidget={handleOpenWidgetForTask}
+                    teamMembers={teamMembers}
                     onConfirmTaskAction={handleConfirmTaskAction}
                   />
                 </div>
@@ -771,6 +960,116 @@ export function TaskBoardPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <TaskDetailSheet
+        open={taskSheetOpen}
+        onOpenChange={(open) => {
+          setTaskSheetOpen(open)
+          if (!open) setWidgetDialogOpen(false)
+        }}
+        taskData={taskSheetLoading ? null : activeTaskData}
+        initialTab={taskSheetInitialTab}
+        columns={columns}
+        onUpdateText={(taskId, text) => {
+          if (!listId) return false
+          return updateTaskText(listId, taskId, text).then((ok) => {
+            void refreshActiveTask(taskId)
+            return ok
+          })
+        }}
+        onUpdateDescription={(taskId, desc) => {
+          if (!listId) return false
+          return updateTaskDescription(listId, taskId, desc).then((ok) => {
+            void refreshActiveTask(taskId)
+            return ok
+          })
+        }}
+        onUpdateDeadline={(taskId, deadline) => {
+          if (!listId) return false
+          return updateTaskDeadline(listId, taskId, deadline).then((ok) => {
+            void refreshActiveTask(taskId)
+            return ok
+          })
+        }}
+        onUpdatePriority={(taskId, priority) => {
+          if (!listId) return false
+          return updateTaskPriority(listId, taskId, priority).then((ok) => {
+            void refreshActiveTask(taskId)
+            return ok
+          })
+        }}
+        onUpdateColumn={(taskId, columnId) => {
+          if (!listId) return false
+          return moveTask(listId, taskId, columnId).then((ok) => {
+            void refreshActiveTask(taskId)
+            return ok
+          })
+        }}
+        onToggleTask={(taskId) => {
+          const task = tasks.find((t) => t.id === taskId)
+          if (task && listId) {
+            toggleTask(listId, taskId, !!task.closed_at)
+            void getTaskCard(listId, taskId).then((data) => { if (data) setActiveTaskData(data) })
+          }
+        }}
+        onArchiveTask={(taskId) => {
+          if (listId) {
+            archiveTask(listId, taskId)
+            setTaskSheetOpen(false)
+          }
+        }}
+        onDeleteTask={(taskId) => {
+          if (listId) {
+            deleteTask(listId, taskId)
+            setTaskSheetOpen(false)
+          }
+        }}
+        onSendMessage={handleSendTaskMessageWithFiles}
+        onEditMessage={(messageId, content) => listId ? editTaskMessage(listId, { message_id: messageId, content }) : false}
+        onDeleteMessage={(messageId) => listId ? deleteTaskMessage(listId, messageId) : false}
+        onEditAttachment={(attachmentId, fileName) => listId ? editTaskAttachment(listId, attachmentId, fileName) : false}
+        onDeleteAttachment={(attachmentId) => listId ? deleteTaskAttachment(listId, attachmentId) : false}
+        onUpsertWidget={(payload) => {
+          if (!listId) return false
+          return Promise.resolve(upsertTaskWidget(listId, payload)).then((ok) => {
+            if (ok) void refreshBoardAfterWidgetChange(payload.task_id)
+            return ok
+          })
+        }}
+        onDeleteWidget={(widgetId) => {
+          if (!listId) return false
+          return Promise.resolve(deleteTaskWidget(listId, widgetId)).then((ok) => {
+            if (ok) void refreshBoardAfterWidgetChange(widgetDialogTaskId || activeTaskId || "")
+            return ok
+          })
+        }}
+        onAddWidgetRequest={() => {
+          if (!activeTaskId && !selectedTaskId) return
+          setWidgetDialogTaskId(activeTaskId || selectedTaskId)
+          setWidgetDialogOpen(true)
+        }}
+        teamMembers={teamMembers}
+      />
+
+      <TaskWidgetDialog
+        open={widgetDialogOpen}
+        onOpenChange={(open) => {
+          setWidgetDialogOpen(open)
+          if (!open) setWidgetDialogTaskId(null)
+        }}
+        taskId={widgetDialogTaskId}
+        teamMembers={teamMembers}
+        onUpsertWidget={(payload) => {
+          if (!listId) return false
+          return Promise.resolve(upsertTaskWidget(listId, payload)).then((ok) => {
+            if (ok) void refreshBoardAfterWidgetChange(payload.task_id)
+            return ok
+          })
+        }}
+        onSaved={() => {
+          if (widgetDialogTaskId) void refreshBoardAfterWidgetChange(widgetDialogTaskId)
+        }}
+      />
     </div>
   )
 }

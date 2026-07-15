@@ -9,9 +9,16 @@ import {
   Archive,
   AlertTriangle,
   CalendarIcon,
+  Plus,
+  Link2,
+  Mail,
+  Phone,
+  DollarSign,
+  User,
 } from "lucide-react"
 import { PRIORITY_COLORS } from "@/types/task"
 import { cn } from "@/lib/utils"
+import type { TaskWidget } from "@/types/task"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -35,6 +42,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 
+type TeamMember = { id: string; first_name: string; last_name: string; img_url: string | null }
+
 interface KanbanCardProps {
   id: string
   title: string
@@ -43,6 +52,7 @@ interface KanbanCardProps {
   closed_at: string | null
   priority: string
   order: number
+  widgets?: TaskWidget[]
   isSelected: boolean
   onSelect: (id: string) => void
   onToggle: (id: string) => void
@@ -54,6 +64,9 @@ interface KanbanCardProps {
   onUpdatePriority: (id: string, priority: string) => void
   onDragStart: (taskId: string) => void
   onDragEnd: () => void
+  onOpenTask: (id: string) => void
+  onAddWidget: (id: string) => void
+  teamMembers?: TeamMember[]
 }
 
 export function KanbanCard({
@@ -64,6 +77,7 @@ export function KanbanCard({
   closed_at,
   priority,
   isSelected,
+  widgets = [],
   onSelect,
   onToggle,
   onDelete,
@@ -74,6 +88,9 @@ export function KanbanCard({
   onUpdatePriority,
   onDragStart,
   onDragEnd,
+  onOpenTask,
+  onAddWidget,
+  teamMembers = [],
 }: KanbanCardProps) {
   const [editing, setEditing] = useState(false)
   const [editText, setEditText] = useState(title)
@@ -122,6 +139,48 @@ export function KanbanCard({
     ? `${String(parsedDate.getHours()).padStart(2, "0")}:${String(parsedDate.getMinutes()).padStart(2, "0")}`
     : "12:00"
 
+  const getWidgetMeta = (widget: TaskWidget) => {
+    const iconClass = "size-3.5 shrink-0"
+    const moneyColor =
+      typeof widget.data?.color === "string"
+        ? String(widget.data.color)
+        : typeof widget.data?.ruble_color === "string"
+          ? String(widget.data.ruble_color)
+          : undefined
+    const member = widget.type === "assignee" ? teamMembers.find((item) => item.id === widget.value) : null
+    const memberName = member ? [member.last_name, member.first_name].filter(Boolean).join(" ") : ""
+    const memberInitials = member
+      ? [member.first_name, member.last_name]
+          .filter(Boolean)
+          .map((part) => part[0]?.toUpperCase())
+          .join("")
+      : ""
+
+    const icon = {
+      date: <CalendarIcon className={iconClass} />,
+      text: <Pencil className={iconClass} />,
+      link: <Link2 className={iconClass} />,
+      email: <Mail className={iconClass} />,
+      phone: <Phone className={iconClass} />,
+      fio: <User className={iconClass} />,
+      money: <DollarSign className={iconClass} style={moneyColor ? { color: moneyColor } : undefined} />,
+      assignee: member ? (
+        <span className="flex size-4 overflow-hidden rounded-full bg-muted">
+          {member.img_url ? <img src={member.img_url} alt="" className="size-full object-cover" /> : <span className="flex size-full items-center justify-center text-[10px] font-semibold">{memberInitials || "?"}</span>}
+        </span>
+      ) : (
+        <User className={iconClass} />
+      ),
+    }[widget.type]
+
+    const label =
+      widget.type === "assignee"
+        ? memberName || "Ответственный"
+        : widget.value || "—"
+
+    return { icon, label }
+  }
+
   return (
     <>
       <div
@@ -136,6 +195,7 @@ export function KanbanCard({
           e.stopPropagation()
           if (!editing && !editingDesc) {
             onSelect(id)
+            onOpenTask(id)
           }
         }}
         className={cn(
@@ -149,13 +209,22 @@ export function KanbanCard({
       >
       {/* Three-dot menu */}
       <div className="absolute top-2 right-2 z-10">
-        <DropdownMenu>
+          <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <button className="flex size-6 items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity hover:bg-muted group-hover:opacity-100 data-[state=open]:opacity-100">
+            <button
+              className="flex size-6 items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity hover:bg-muted group-hover:opacity-100 data-[state=open]:opacity-100"
+              onClick={(e) => e.stopPropagation()}
+              onPointerDown={(e) => e.stopPropagation()}
+            >
               <MoreHorizontal className="size-4" />
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="min-w-[200px]">
+        <DropdownMenuContent align="end" className="min-w-[200px]">
+            <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onAddWidget(id) }}>
+              <Plus className="mr-2 size-4" />
+              Добавить виджет
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => onToggle(id)}>
               <Check className="mr-2 size-4" />
               {isCompleted ? "Отметить невыполненной" : "Отметить выполненной"}
@@ -346,6 +415,25 @@ export function KanbanCard({
               </span>
             )}
           </div>
+          {widgets.length > 0 && (
+            <div className="flex flex-wrap gap-1 pt-1">
+              {widgets.slice(0, 3).map((widget) => (
+                <span key={widget.id} className="inline-flex items-center gap-1 rounded-full border bg-muted/40 px-2 py-0.5 text-[10px] text-muted-foreground">
+                  {(() => {
+                    const meta = getWidgetMeta(widget)
+                    return (
+                      <>
+                        <span className="inline-flex size-4 items-center justify-center rounded-full bg-background/80">
+                          {meta.icon}
+                        </span>
+                        <span className="max-w-[120px] truncate">{meta.label}</span>
+                      </>
+                    )
+                  })()}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
       </div>
       </div>

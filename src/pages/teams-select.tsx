@@ -14,11 +14,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { CheckCircle, LogOut, Plus, Archive, Users, Settings, HelpCircle } from "lucide-react"
-import { useUser } from "@/hooks/use-user"
+import { CheckCircle, Plus, Archive, Users, Settings, HelpCircle } from "lucide-react"
 import { useTeams, sortTeams, type SortBy } from "@/hooks/use-teams"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { cn } from "@/lib/utils"
+import { UserMenu } from "@/components/user-menu"
+import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { api } from "@/lib/api"
 
 const navItems = [
   {
@@ -71,29 +75,69 @@ function TopNav() {
 }
 
 export function TeamsPage() {
-  const { user } = useUser()
-  const { teams, loading, activeTeam } = useTeams()
+  const { teams, loading, activeTeam, refreshTeams } = useTeams()
   const navigate = useNavigate()
   const [sortBy, setSortBy] = useState<SortBy>("name_asc")
+  const [createOpen, setCreateOpen] = useState(false)
+  const [teamName, setTeamName] = useState("")
+  const [teamDesc, setTeamDesc] = useState("")
+  const [creating, setCreating] = useState(false)
+  const [createError, setCreateError] = useState("")
 
   useEffect(() => {
     if (activeTeam) document.title = activeTeam.name;
     else document.title = "Мои команды"
   }, [activeTeam])
 
-  const displayName = user
-    ? `${user.last_name} ${user.first_name}`
-    : "Пользователь"
-  const displayEmail = user?.email || ""
-  const displayAvatar = user?.img_url || ""
-  const initials = user
-    ? `${user.last_name?.[0] ?? ""}${user.first_name?.[0] ?? ""}`.toUpperCase()
-    : "П"
-
   const sortedTeams = sortTeams(teams, sortBy)
+  const usedBytes = activeTeam?.storage_used_bytes ?? 0
+  const limitBytes = activeTeam?.storage_limit_bytes ?? Math.round((activeTeam?.storage_limit_gb ?? 1) * 1000000000)
+  const percent = activeTeam?.storage_percent ?? 0
+  const formatSize = (bytes: number) => {
+    if (bytes < 1024) return `${bytes} Б`
+    if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} КБ`
+    if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1).replace(/\.0$/, "")} МБ`
+    return `${(bytes / (1024 * 1024 * 1024)).toFixed(2).replace(/\.0+$/, "").replace(/\.([1-9])0$/, ".$1")} ГБ`
+  }
 
   const handleSelectTeam = (teamLogin: string) => {
     navigate(`/teams/${teamLogin}`)
+  }
+
+  const handleCreateTeam = async () => {
+    const name = teamName.trim()
+    if (!name) {
+      setCreateError("Название команды обязательно")
+      return
+    }
+
+    setCreating(true)
+    setCreateError("")
+
+    try {
+      const body = new URLSearchParams()
+      body.append("name", name)
+      if (teamDesc.trim()) body.append("description", teamDesc.trim())
+
+      const { data } = await api.post("/main/team/create/", body, {
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      })
+
+      if (!data.status || !data.data?.team) {
+        throw new Error(data?.error || "team_create_failed")
+      }
+
+      await refreshTeams()
+      setCreateOpen(false)
+      setTeamName("")
+      setTeamDesc("")
+      navigate(`/teams/${data.data.team.login}`)
+    } catch (createTeamError) {
+      console.error("Failed to create team:", createTeamError)
+      setCreateError("Не удалось создать команду")
+    } finally {
+      setCreating(false)
+    }
   }
 
   return (
@@ -108,23 +152,7 @@ export function TeamsPage() {
         </div>
         <div className="flex items-center gap-2">
           <ThemeToggle />
-          <div className="flex items-center gap-2 sm:gap-3">
-            <Avatar className="size-7 sm:size-8">
-              <AvatarImage src={displayAvatar} />
-              <AvatarFallback className="text-[10px] sm:text-xs">{initials}</AvatarFallback>
-            </Avatar>
-            <div className="hidden md:flex flex-col text-left">
-              <span className="text-sm font-medium">{displayName}</span>
-              <span className="text-xs text-muted-foreground">{displayEmail}</span>
-            </div>
-          </div>
-          <Button variant="outline" size="sm" className="hidden sm:flex" onClick={() => window.location.href = "https://id.exesfull.com/oauth/logout/"}>
-            <LogOut className="mr-2 size-4" />
-            Выйти
-          </Button>
-          <Button variant="outline" size="icon" className="sm:hidden" onClick={() => window.location.href = "https://id.exesfull.com/oauth/logout/"}>
-            <LogOut className="size-4" />
-          </Button>
+          <UserMenu />
         </div>
       </header>
 
@@ -134,6 +162,21 @@ export function TeamsPage() {
       {/* Main */}
       <main className="flex flex-1 items-start justify-center p-4 sm:p-6">
         <div className="w-full max-w-2xl">
+          {activeTeam && (
+            <div className="mb-4 rounded-3xl bg-slate-950 p-4 text-white shadow-lg">
+              <div className="mb-2 flex items-center justify-between text-sm font-medium">
+                <span>{formatSize(usedBytes)}</span>
+                <span>{formatSize(limitBytes)}</span>
+              </div>
+              <div className="h-3 overflow-hidden rounded-full bg-white/15">
+                <div className="h-full rounded-full bg-white/70 transition-all" style={{ width: `${Math.min(100, percent)}%` }} />
+              </div>
+              <div className="mt-2 flex items-center justify-between text-xs text-white/80">
+                <span>Занято</span>
+                <span>Лимит</span>
+              </div>
+            </div>
+          )}
           <div className="mb-4 sm:mb-6 flex flex-col sm:flex-row items-start sm:items-end justify-between gap-3">
             <div>
               <h1 className="text-2xl sm:text-3xl font-bold">Мои команды</h1>
@@ -208,7 +251,7 @@ export function TeamsPage() {
 
           {/* Bottom buttons */}
           <div className="mt-4 sm:mt-6 flex flex-col sm:flex-row gap-3">
-            <Button className="flex-1" onClick={() => {}}>
+            <Button className="flex-1" onClick={() => setCreateOpen(true)}>
               <Plus className="mr-2 size-4" />
               <span className="hidden sm:inline">Создать команду</span>
               <span className="sm:hidden">Создать</span>
@@ -226,6 +269,44 @@ export function TeamsPage() {
       <footer className="border-t px-6 py-4 text-center text-sm text-muted-foreground">
         © {new Date().getFullYear()} Чисто Задачи
       </footer>
+
+      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+        <DialogContent className="sm:max-w-[520px]">
+          <DialogHeader>
+            <DialogTitle>Создать команду</DialogTitle>
+            <DialogDescription>Заполните данные новой команды</DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-4 py-2">
+            <div className="flex flex-col gap-2">
+              <label className="text-sm font-medium">Название *</label>
+              <Input
+                placeholder="Название команды"
+                value={teamName}
+                onChange={(e) => setTeamName(e.target.value)}
+                autoFocus
+              />
+            </div>
+            <div className="flex flex-col gap-2">
+              <label className="text-sm font-medium">Описание</label>
+              <Textarea
+                placeholder="Описание команды"
+                value={teamDesc}
+                onChange={(e) => setTeamDesc(e.target.value)}
+                rows={3}
+              />
+            </div>
+            {createError && <p className="text-sm text-destructive">{createError}</p>}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreateOpen(false)}>
+              Отмена
+            </Button>
+            <Button onClick={handleCreateTeam} disabled={creating || !teamName.trim()}>
+              {creating ? "Создание..." : "Создать"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

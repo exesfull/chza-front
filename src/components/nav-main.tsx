@@ -29,11 +29,14 @@ export function NavMain({
     url: string
     icon?: LucideIcon
     isActive?: boolean
+    defaultOpen?: boolean
     adminOnly?: boolean
-    items?: {
-      title: string
-      url: string
-    }[]
+  items?: {
+    title: string
+    url: string
+    icon?: LucideIcon
+    exact?: boolean
+  }[]
   }[]
 }) {
   const location = useLocation()
@@ -77,17 +80,17 @@ export function NavMain({
           item.title === "separator" ? (
             <div key="separator" className="my-2 border-t border-sidebar-border" />
           ) : item.items && item.items.length > 0 ? (
-            <Collapsible
+          <Collapsible
               key={item.title}
               asChild
-              defaultOpen={item.isActive}
+              defaultOpen={item.defaultOpen ?? item.isActive ?? isActivePath(item.url)}
               className="group/collapsible"
             >
               <SidebarMenuItem>
                 <CollapsibleTrigger asChild>
                   <SidebarMenuButton
                     tooltip={item.title}
-                    isActive={isActivePath(item.url)}
+                    isActive={item.isActive ?? isActivePath(item.url)}
                   >
                     {item.icon && <item.icon />}
                     <span>{item.title}</span>
@@ -97,10 +100,11 @@ export function NavMain({
                 <CollapsibleContent>
                   <SidebarMenuSub>
                     {item.items?.map((subItem) => (
-                      <SidebarMenuSubItem key={subItem.title}>
-                        <SidebarMenuSubButton asChild isActive={isActivePath(subItem.url)}>
-                          <Link to={resolveUrl(subItem.url)}>
-                            <span>{subItem.title}</span>
+                    <SidebarMenuSubItem key={subItem.title}>
+                      <SidebarMenuSubButton asChild isActive={subItem.exact ? location.pathname === resolveUrl(subItem.url) : isActivePath(subItem.url)}>
+                        <Link to={resolveUrl(subItem.url)}>
+                          {subItem.icon && <subItem.icon />}
+                          <span>{subItem.title}</span>
                           </Link>
                         </SidebarMenuSubButton>
                       </SidebarMenuSubItem>

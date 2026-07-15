@@ -10,7 +10,10 @@ import {
   StickyNote,
   BarChart3,
   Users,
+  Settings2,
 } from "lucide-react"
+import { useNavigate, useParams } from "react-router-dom"
+import { useTeams } from "@/hooks/use-teams"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -99,6 +102,9 @@ function compactGrid(widgets: Widget[]): Widget[] {
 }
 
 export function TeamDashboardPage() {
+  const navigate = useNavigate()
+  const { teamLogin } = useParams()
+  const { isAdmin } = useTeams()
   const [widgets, setWidgets] = useState<Widget[]>(loadWidgets)
   const [editMode, setEditMode] = useState(false)
   const [addOpen, setAddOpen] = useState(false)
@@ -267,10 +273,13 @@ export function TeamDashboardPage() {
           <h1 className="text-2xl font-bold">Чисто Задачи</h1>
           <p className="text-sm text-muted-foreground">Добро пожаловать!</p>
         </div>
-        <Button variant={editMode ? "default" : "outline"} size="sm" onClick={() => setEditMode(!editMode)}>
-          <LayoutGrid className="mr-2 size-4" />
-          {editMode ? "Готово" : "Изменить виджеты"}
-        </Button>
+        <div className="flex items-center gap-2">
+          {isAdmin && <Button variant="outline" size="sm" onClick={() => navigate(`/teams/${teamLogin}/admin`)}><Settings2 className="mr-2 size-4" />Управление командой</Button>}
+          <Button variant={editMode ? "default" : "outline"} size="sm" onClick={() => setEditMode(!editMode)}>
+            <LayoutGrid className="mr-2 size-4" />
+            {editMode ? "Готово" : "Изменить виджеты"}
+          </Button>
+        </div>
       </div>
 
       {editMode && (

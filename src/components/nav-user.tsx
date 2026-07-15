@@ -4,7 +4,6 @@ import {
   ArrowLeftRight,
   ChevronsUpDown,
   LogOut,
-  Settings,
   User,
 } from "lucide-react"
 
@@ -30,6 +29,7 @@ import {
 } from "@/components/ui/sidebar"
 import { useUser } from "@/hooks/use-user"
 import { Skeleton } from "@/components/ui/skeleton"
+import { buildLocalLogoutUrl, buildSwitchAccountUrl } from "@/lib/sso"
 
 export function NavUser() {
   const { isMobile } = useSidebar()
@@ -100,19 +100,15 @@ export function NavUser() {
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuGroup>
-              <DropdownMenuItem onClick={() => window.location.href = "https://id.exesfull.com/my/profile"}>
+              <DropdownMenuItem onClick={() => window.location.href = "https://id.exesfull.com/oauth/my/"}>
                 <User />
                 Профиль
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => window.location.href = "https://id.exesfull.com/my/settings/"}>
-                <Settings />
-                Настройки
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => window.location.href = "https://id.exesfull.com/oauth/chageAccount/"}>
+              <DropdownMenuItem onClick={() => window.location.href = buildSwitchAccountUrl()}>
                 <ArrowLeftRight />
                 Сменить аккаунт
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => window.location.href = "https://id.exesfull.com/oauth/logout/"}>
+              <DropdownMenuItem onClick={() => window.location.href = buildLocalLogoutUrl()}>
                 <LogOut />
                 Выйти
               </DropdownMenuItem>

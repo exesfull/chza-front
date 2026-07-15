@@ -51,7 +51,10 @@ interface KanbanColumnProps {
   isTaskDragOver?: boolean
   selectedTaskId: string | null
   onSelectTask: (id: string | null) => void
+  onOpenTask: (id: string) => void
   onConfirmTaskAction: (id: string) => void
+  onAddWidget: (id: string) => void
+  teamMembers?: Array<{ id: string; first_name: string; last_name: string; img_url: string | null }>
   editListCol?: (listId: string, colId: string, updates: { name?: string; description?: string; color_hex?: string; is_deleted?: boolean }) => Promise<boolean>
   onColumnUpdated?: () => void
 }
@@ -84,7 +87,10 @@ export function KanbanColumn({
   isTaskDragOver,
   selectedTaskId,
   onSelectTask,
+  onOpenTask,
   onConfirmTaskAction,
+  onAddWidget,
+  teamMembers = [],
   editListCol,
   onColumnUpdated,
 }: KanbanColumnProps) {
@@ -336,6 +342,7 @@ export function KanbanColumn({
             closed_at={task.closed_at}
             priority={task.priority}
             order={task.order}
+            widgets={task.widgets}
             isSelected={selectedTaskId === task.id}
             onSelect={(id) => onSelectTask(selectedTaskId === id ? null : id)}
             onToggle={onToggleTask}
@@ -347,6 +354,9 @@ export function KanbanColumn({
             onUpdatePriority={onUpdateTaskPriority}
             onDragStart={onDragStartTask}
             onDragEnd={onDragEndTask}
+            onOpenTask={onOpenTask}
+            onAddWidget={onAddWidget}
+            teamMembers={teamMembers}
           />
         ))}
       </div>

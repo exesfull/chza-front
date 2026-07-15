@@ -61,6 +61,8 @@ import {
 import { Textarea } from "@/components/ui/textarea"
 import { useProfiles, type UserProfile } from "@/hooks/use-profiles"
 import { useTeams } from "@/hooks/use-teams"
+import { Link2, Mail, Phone, DollarSign } from "lucide-react"
+import type { TaskWidget } from "@/types/task"
 
 type SortField = "title" | "stage" | "priority" | "deadline"
 type SortDir = "asc" | "desc"
@@ -112,6 +114,7 @@ interface TableViewProps {
   onUpdateTaskText: (id: string, text: string) => void
   onUpdateTaskDescription: (id: string, desc: string) => void
   onCreateTask: (columnId: string, title: string) => void
+  onOpenTask: (id: string) => void
   // Stage management
   stagesOpen: boolean
   onStagesOpenChange: (open: boolean) => void
@@ -121,6 +124,7 @@ interface TableViewProps {
   onDeleteColumn: (columnId: string) => void
   onDeleteColumnWithTasks: (columnId: string, onProgress?: (done: number, total: number) => void) => Promise<boolean>
   teamLogin: string
+  teamMembers?: Array<{ id: string; first_name: string; last_name: string; img_url: string | null }>
 }
 
 export function TableView({
@@ -135,6 +139,7 @@ export function TableView({
   onUpdateTaskText,
   onUpdateTaskDescription,
   onCreateTask,
+  onOpenTask,
   stagesOpen,
   onStagesOpenChange,
   onAddColumn,
@@ -143,6 +148,7 @@ export function TableView({
   onDeleteColumn,
   onDeleteColumnWithTasks,
   teamLogin,
+  teamMembers = [],
 }: TableViewProps) {
   const { getProfile, fetchProfiles } = useProfiles()
   const { teamMembership } = useTeams()
@@ -198,6 +204,47 @@ export function TableView({
 
   const getColumnName = (columnId: string) => columns.find((c) => c.id === columnId)?.name || "—"
   const getColumnColor = (columnId: string) => columns.find((c) => c.id === columnId)?.color || "#6b7280"
+
+  const getWidgetMeta = (widget: TaskWidget) => {
+    const moneyColor =
+      typeof widget.data?.color === "string"
+        ? String(widget.data.color)
+        : typeof widget.data?.ruble_color === "string"
+          ? String(widget.data.ruble_color)
+          : undefined
+    const member = widget.type === "assignee" ? teamMembers.find((item) => item.id === widget.value) : null
+    const memberName = member ? [member.last_name, member.first_name].filter(Boolean).join(" ") : ""
+    const memberInitials = member
+      ? [member.first_name, member.last_name]
+          .filter(Boolean)
+          .map((part) => part[0]?.toUpperCase())
+          .join("")
+      : ""
+
+    const icon = {
+      date: <CalendarIcon className="size-3.5" />,
+      text: <Pencil className="size-3.5" />,
+      link: <Link2 className="size-3.5" />,
+      email: <Mail className="size-3.5" />,
+      phone: <Phone className="size-3.5" />,
+      fio: <div className="text-[10px] font-semibold">ФИО</div>,
+      money: <DollarSign className="size-3.5" style={moneyColor ? { color: moneyColor } : undefined} />,
+      assignee: member ? (
+        <span className="flex size-4 overflow-hidden rounded-full bg-muted">
+          {member.img_url ? <img src={member.img_url} alt="" className="size-full object-cover" /> : <span className="flex size-full items-center justify-center text-[10px] font-semibold">{memberInitials || "?"}</span>}
+        </span>
+      ) : (
+        <div className="size-3.5 rounded-full bg-muted" />
+      ),
+    }[widget.type]
+
+    const label =
+      widget.type === "assignee"
+        ? memberName || "Ответственный"
+        : widget.value || widget.title || "—"
+
+    return { icon, label }
+  }
 
   // Keyboard handler
   useEffect(() => {
@@ -385,13 +432,20 @@ export function TableView({
                   "border-t transition-colors cursor-pointer",
                   selectedTaskId === task.id ? "bg-primary/5" : "hover:bg-muted/30"
                 )}
-                onClick={() => setSelectedTaskId(selectedTaskId === task.id ? null : task.id)}
+                onClick={() => {
+                  setSelectedTaskId(selectedTaskId === task.id ? null : task.id)
+                  onOpenTask(task.id)
+                }}
               >
                 {/* Completion */}
                 {visibleCols.completion && (
-                  <td className="p-3 text-center" onClick={(e) => e.stopPropagation()}>
+                  <td className="p-3 text-center">
                     <button
-                      onClick={() => onToggleTask(task.id)}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        onToggleTask(task.id)
+                      }}
+                      onMouseDown={(e) => e.stopPropagation()}
                       className={cn(
                         "flex size-5 items-center justify-center rounded-sm border transition-colors mx-auto",
                         task.closed_at
@@ -405,9 +459,10 @@ export function TableView({
                 )}
                 {/* Title + Description */}
                 {visibleCols.title && (
-                  <td className="p-3 max-w-[350px]" onClick={(e) => e.stopPropagation()}>
+                  <td className="p-3 max-w-[350px]">
                   {editingTitleId === task.id ? (
                     <Input
+                      onClick={(e) => e.stopPropagation()}
                       value={editingTitleText}
                       onChange={(e) => setEditingTitleText(e.target.value)}
                       onBlur={saveTitle}
@@ -426,8 +481,29 @@ export function TableView({
                       {task.title}
                     </div>
                   )}
+                  {task.widgets?.length ? (
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {task.widgets.slice(0, 3).map((widget) => (
+                        <span key={widget.id} className="inline-flex items-center gap-1 rounded-full border bg-background/80 px-2 py-0.5 text-[10px] text-muted-foreground shadow-sm">
+                          <span className="inline-flex size-4 items-center justify-center rounded-full bg-muted/80">
+                            {(() => {
+                              const meta = getWidgetMeta(widget)
+                              return meta.icon
+                            })()}
+                          </span>
+                          <span className="truncate">
+                            {(() => {
+                              const meta = getWidgetMeta(widget)
+                              return meta.label
+                            })()}
+                          </span>
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
                   {editingDescId === task.id ? (
                     <Textarea
+                      onClick={(e) => e.stopPropagation()}
                       value={editingDescText}
                       onChange={(e) => setEditingDescText(e.target.value)}
                       onBlur={saveDesc}
@@ -458,9 +534,12 @@ export function TableView({
                 )}
                 {/* Stage */}
                 {visibleCols.stage && (
-                <td className="p-3" onClick={(e) => e.stopPropagation()}>
+                <td className="p-3">
                   <button
-                    onClick={() => setEditingStageTaskId(task.id)}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setEditingStageTaskId(task.id)
+                    }}
                     className="flex items-center gap-2 rounded-md px-2 py-1 text-xs font-medium transition-colors hover:bg-muted"
                     style={{ backgroundColor: `${getColumnColor(task.column_id)}15`, color: getColumnColor(task.column_id) }}
                   >
@@ -471,7 +550,7 @@ export function TableView({
                 )}
                 {/* Priority */}
                 {visibleCols.priority && (
-                <td className="p-3" onClick={(e) => e.stopPropagation()}>
+                <td className="p-3">
                   <Select value={task.priority || "_none"} onValueChange={(v) => onUpdateTaskPriority(task.id, v === "_none" ? "" : v)}>
                     <SelectTrigger className="h-auto border-0 bg-transparent shadow-none w-fit p-0 text-xs font-medium hover:bg-muted">
                       <SelectValue>
@@ -495,7 +574,7 @@ export function TableView({
                 )}
                 {/* Deadline */}
                 {visibleCols.deadline && (
-                <td className="p-3" onClick={(e) => e.stopPropagation()}>
+                <td className="p-3">
                   {editingDeadlineId === task.id ? (
                     <Popover defaultOpen onOpenChange={(open) => { if (!open) setEditingDeadlineId(null) }}>
                       <PopoverTrigger asChild>
@@ -587,16 +666,20 @@ export function TableView({
                 )}
                 {/* Created by */}
                 {visibleCols.createdBy && (
-                  <td className="p-3" onClick={(e) => e.stopPropagation()}>
-                    <UserProfileBadge userId={task.created_by} getProfile={getProfile} />
-                  </td>
+                <td className="p-3">
+                  <UserProfileBadge userId={task.created_by} getProfile={getProfile} />
+                </td>
                 )}
                 {/* Menu */}
                 {visibleCols.menu && (
-                  <td className="p-3" onClick={(e) => e.stopPropagation()}>
+                  <td className="p-3">
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <button className="flex size-7 items-center justify-center rounded text-muted-foreground hover:bg-muted">
+                      <button
+                        className="flex size-7 items-center justify-center rounded text-muted-foreground hover:bg-muted"
+                        onClick={(e) => e.stopPropagation()}
+                        onPointerDown={(e) => e.stopPropagation()}
+                      >
                         <MoreHorizontal className="size-4" />
                       </button>
                     </DropdownMenuTrigger>

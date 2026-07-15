@@ -44,6 +44,18 @@ export interface Task {
   created_by: string
   created_at: string
   updated_at: string
+  widgets?: TaskWidget[]
+}
+
+export interface TaskWidget {
+  id: string
+  task_id: string
+  type: string
+  title: string
+  value: string | null
+  data: Record<string, unknown> | null
+  created_at?: string | null
+  updated_at?: string | null
 }
 
 export const PRIORITY_COLORS: Record<string, string> = {
